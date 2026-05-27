@@ -1,26 +1,18 @@
 import React, { useContext, useState, useEffect, useRef } from 'react';
 import { 
   View, Text, TouchableOpacity, StyleSheet, ScrollView, 
-  Animated, StatusBar, Platform, ActivityIndicator 
+  Animated, StatusBar, ActivityIndicator 
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { AuthContext } from '../context/AuthContext'; // ИСПРАВЛЕНО
+import { AuthContext } from '../context/AuthContext'; 
 import { getThemeColors } from '../styles/colors';
 import { db } from '../services/db'; 
 import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Haptics from 'expo-haptics';
 
-const SUBJECT_DETAILS = {
-  Math: { title: 'Математика', desc: 'Алгебра, геометрия и функции', icon: 'analytics-outline', color: '#4A90E2' },
-  Informatics: { title: 'IT технологии', desc: 'Алгоритмы и программирование', icon: 'code-working-outline', color: '#9B59B6' },
-  Russian: { title: 'Русский язык', desc: 'Орфография и культура речи', icon: 'text-outline', color: '#2ECC71' },
-  Literature: { title: 'Литература', desc: 'Анализ текстов и классика', icon: 'library-outline', color: '#E67E22' },
-  Physics: { title: 'Физика', desc: 'Законы природы и механика', icon: 'flash-outline', color: '#F1C40F' },
-  Biology: { title: 'Биология', desc: 'Мир живых организмов', icon: 'leaf-outline', color: '#FF5E5E' },
-};
-
 const SubjectSelectionScreen = ({ route, navigation }) => {
-  const { subjectKey } = route.params || { subjectKey: 'Math' };
+  // 💡 ИСПРАВЛЕНО: Принимаем subjectName, переданный из каталога курсов
+  const { subjectKey, subjectName } = route.params || { subjectKey: 'math', subjectName: 'Курс' };
   const { isDarkMode } = useContext(AuthContext);
   const colors = getThemeColors(isDarkMode);
 
@@ -28,10 +20,20 @@ const SubjectSelectionScreen = ({ route, navigation }) => {
   const [loading, setLoading] = useState(true);
   const scaleAnim = useRef(new Animated.Value(0.9)).current;
 
-  const current = SUBJECT_DETAILS[subjectKey] || { 
-    title: subjectKey,
-    desc: 'Изучение основ направления', 
-    icon: 'school-outline', 
+  // 💡 ИСПРАВЛЕНО: Безопасный маппинг иконок под разные типы предметов
+  const iconMap = {
+    'math': 'calculator-outline',
+    'advanced_math': 'calculator-outline',
+    'physics': 'flash-outline',
+    'programming': 'code-working-outline',
+    'python_dev': 'code-working-outline',
+    'web_dev': 'globe-outline',
+  };
+
+  const current = { 
+    title: subjectName || 'Выбор темы', // Больше никаких "math" в заголовке!
+    desc: `Изучение основ направления и практические задания`, 
+    icon: iconMap[subjectKey] || 'school-outline', 
     color: colors.primary 
   };
 
@@ -41,9 +43,11 @@ const SubjectSelectionScreen = ({ route, navigation }) => {
     
     const fetchStats = () => {
       try {
+        // Запрос к локальной SQLite для подсчета тем по ключу предмета
         const result = db.getFirstSync('SELECT COUNT(*) as count FROM topics WHERE subject_key = ?', [subjectKey]);
         setTopicCount(result?.count || 0);
       } catch (e) { 
+        console.log('❌ Ошибка SQLite при подсчете тем:', e.message);
         setTopicCount(0); 
       } finally {
         setLoading(false);
@@ -58,10 +62,12 @@ const SubjectSelectionScreen = ({ route, navigation }) => {
       subject: { subject_key: subjectKey, title: current.title } 
     });
   };
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>
       <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
       
+      {/* HEADER */}
       <View style={styles.header}>
           <TouchableOpacity 
             style={[styles.backBtn, { backgroundColor: colors.surface, borderColor: colors.border }]} 
@@ -69,6 +75,7 @@ const SubjectSelectionScreen = ({ route, navigation }) => {
           >
             <Ionicons name="chevron-back" size={24} color={colors.textPrimary} />
           </TouchableOpacity>
+          {/* 💡 ТЕПЕРЬ ТУТ ВСЕГДА КРАСИВОЕ РУССКОЕ НАЗВАНИЕ КУРСА */}
           <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>{current.title}</Text>
           <View style={{ width: 45 }} /> 
       </View>

@@ -1,12 +1,13 @@
 import React, { useContext, useState, useEffect, useRef } from 'react';
-import { 
-  View, Text, TouchableOpacity, StyleSheet, Dimensions, 
-  TextInput, Animated, ScrollView, StatusBar, Platform 
+import {
+  View, Text, TouchableOpacity, StyleSheet, Dimensions,
+  TextInput, Animated, ScrollView, StatusBar, Platform
 } from 'react-native';
 import { AuthContext } from '../context/AuthContext';
 import { getThemeColors } from '../styles/colors';
-import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Haptics from 'expo-haptics';
+import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
+
 
 const { width } = Dimensions.get('window');
 const QUOTES = [
@@ -19,20 +20,20 @@ const QUOTES = [
 
 const HomeScreen = ({ navigation }) => {
   const { user, isDarkMode, streak, getLeaderboard } = useContext(AuthContext);
-  
+
   const nickname = user?.username || 'Студент';
   const userRole = user?.role || 'student';
   const colors = getThemeColors(isDarkMode);
 
   const [userRank, setUserRank] = useState('?');
   const [quote] = useState(QUOTES[Math.floor(Math.random() * QUOTES.length)]);
-  const [timer, setTimer] = useState(1500); 
+  const [timer, setTimer] = useState(1500);
   const [active, setActive] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     Animated.timing(fadeAnim, { toValue: 1, duration: 800, useNativeDriver: true }).start();
-    
+
     const fetchRank = async () => {
       try {
         const leaders = await getLeaderboard() || [];
@@ -57,35 +58,59 @@ const HomeScreen = ({ navigation }) => {
   }, [active, timer]);
 
   const date = new Date();
-  const dInfo = { 
-    day: date.getDate(), 
-    month: date.toLocaleDateString('ru-RU', { month: 'short' }).toUpperCase().replace('.', ''), 
-    weekday: date.toLocaleDateString('ru-RU', { weekday: 'long' }).replace(/^\w/, c => c.toUpperCase()) 
+  const dInfo = {
+    day: date.getDate(),
+    month: date.toLocaleDateString('ru-RU', { month: 'short' }).toUpperCase().replace('.', ''),
+    weekday: date.toLocaleDateString('ru-RU', { weekday: 'long' }).replace(/^\w/, c => c.toUpperCase())
   };
 
-   return (
+  return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
-      
-      <ScrollView 
-        showsVerticalScrollIndicator={false} 
+
+      <ScrollView
+        showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.scroll, { paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight + 20 : 60 }]}
       >
-        
+
         {/* HEADER */}
         <Animated.View style={[styles.header, { opacity: fadeAnim }]}>
-          <View style={{flexDirection: 'row', alignItems: 'center'}}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             <View style={[styles.cal, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <Text style={[styles.calM, { color: colors.primary }]}>{dInfo.month}</Text>
               <Text style={[styles.calD, { color: colors.textPrimary }]}>{dInfo.day}</Text>
             </View>
-            <View style={{marginLeft: 15}}>
+            <View style={{ marginLeft: 15 }}>
               <Text style={[styles.week, { color: colors.textMuted }]}>{dInfo.weekday}</Text>
               <Text style={[styles.welcome, { color: colors.textPrimary }]}>Привет, {nickname}!</Text>
             </View>
           </View>
-          <TouchableOpacity 
-            style={[styles.pCircle, { backgroundColor: colors.surface, borderColor: colors.border }]} 
+          
+          <TouchableOpacity
+            style={[
+              styles.coinBadge,
+              { backgroundColor: '#F1C40F15', borderColor: '#F1C40F35', marginRight: 10 }
+            ]}
+            activeOpacity={0.8}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              navigation.navigate('Shop'); // Переходим в наш магазин!
+            }}
+          >
+            <FontAwesome5
+              name="coins"
+              size={13}
+              color="#F1C40F"
+              style={{ marginRight: 6, padding: 1, marginTop: -1 }}
+            />
+            <Text style={[styles.coinText, { color: colors.textPrimary }]}>
+              {user?.balance || 0}
+            </Text>
+          </TouchableOpacity>
+
+
+          <TouchableOpacity
+            style={[styles.pCircle, { backgroundColor: colors.surface, borderColor: colors.border }]}
             onPress={() => navigation.navigate('Profile')}
           >
             <Ionicons name="person" size={20} color={colors.primary} />
@@ -95,10 +120,10 @@ const HomeScreen = ({ navigation }) => {
         {/* ПОИСК */}
         <View style={[styles.search, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Ionicons name="search-outline" size={20} color={colors.textMuted} />
-          <TextInput 
-            placeholder="Найти курс или лекцию..." 
-            placeholderTextColor={colors.textMuted} 
-            style={{flex: 1, marginLeft: 10, color: colors.textPrimary}} 
+          <TextInput
+            placeholder="Найти курс или лекцию..."
+            placeholderTextColor={colors.textMuted}
+            style={{ flex: 1, marginLeft: 10, color: colors.textPrimary }}
           />
         </View>
 
@@ -129,22 +154,22 @@ const HomeScreen = ({ navigation }) => {
 
         {/* ТАЙМЕР */}
         <View style={[styles.tCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <View style={{flexDirection: 'row', alignItems: 'center'}}>
-            <View style={[styles.tIcon, {backgroundColor: colors.primary + '15'}]}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <View style={[styles.tIcon, { backgroundColor: colors.primary + '15' }]}>
               <Ionicons name="timer-outline" size={20} color={colors.primary} />
             </View>
             <View>
               <Text style={[styles.tLabel, { color: colors.textMuted }]}>ФОКУС-СЕССИЯ</Text>
               <Text style={[styles.tVal, { color: colors.textPrimary }]}>
-                {Math.floor(timer/60)}:{(timer%60).toString().padStart(2, '0')}
+                {Math.floor(timer / 60)}:{(timer % 60).toString().padStart(2, '0')}
               </Text>
             </View>
           </View>
-          <TouchableOpacity 
-            style={[styles.tBtn, { backgroundColor: active ? '#FF5E5E' : colors.primary }]} 
-            onPress={() => { 
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); 
-              setActive(!active); 
+          <TouchableOpacity
+            style={[styles.tBtn, { backgroundColor: active ? '#FF5E5E' : colors.primary }]}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setActive(!active);
             }}
           >
             <Text style={styles.tBtnT}>{active ? 'ПАУЗА' : 'СТАРТ'}</Text>
@@ -156,7 +181,7 @@ const HomeScreen = ({ navigation }) => {
           <View style={styles.btnIconCircle}>
             <Ionicons name="grid" size={24} color={colors.primary} />
           </View>
-          <View style={{flex: 1, marginLeft: 15}}>
+          <View style={{ flex: 1, marginLeft: 15 }}>
             <Text style={styles.btnT}>Каталог курсов</Text>
             <Text style={styles.btnS}>Доступные направления</Text>
           </View>
@@ -164,8 +189,8 @@ const HomeScreen = ({ navigation }) => {
         </TouchableOpacity>
 
         {/* КНОПКА ЛАБОРАТОРИИ */}
-        <TouchableOpacity 
-          style={[styles.mainBtn, { backgroundColor: '#8E44AD', marginTop: 12 }]} 
+        <TouchableOpacity
+          style={[styles.mainBtn, { backgroundColor: '#8E44AD', marginTop: 12 }]}
           onPress={() => navigation.navigate('LabScreen')}
         >
           <View style={styles.btnIconCircle}>
@@ -179,8 +204,8 @@ const HomeScreen = ({ navigation }) => {
         </TouchableOpacity>
 
         {/* КНОПКА СПРАВОЧНИКА */}
-        <TouchableOpacity 
-          style={[styles.formulaBtn, { backgroundColor: colors.surface, borderColor: colors.border, marginTop: 12 }]} 
+        <TouchableOpacity
+          style={[styles.formulaBtn, { backgroundColor: colors.surface, borderColor: colors.border, marginTop: 12 }]}
           onPress={() => navigation.navigate('ReferenceScreen')}
         >
           <View style={styles.formulaBtnLeft}>
@@ -203,7 +228,7 @@ const HomeScreen = ({ navigation }) => {
           </TouchableOpacity>
         )}
 
-        <View style={{height: 40}} />
+        <View style={{ height: 40 }} />
       </ScrollView>
     </View>
   );
@@ -244,7 +269,25 @@ const styles = StyleSheet.create({
   formulaBtnTitle: { fontSize: 16, fontWeight: 'bold' },
   formulaBtnSub: { fontSize: 12 },
   adminBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, marginTop: 30, padding: 15, backgroundColor: '#1A202C', borderRadius: 20 },
-  adminT: { color: '#F1C40F', fontWeight: 'bold', fontSize: 12, letterSpacing: 1 }
+  adminT: { color: '#F1C40F', fontWeight: 'bold', fontSize: 12, letterSpacing: 1 },
+  coinBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 4,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    height: 34, 
+    overflow: 'visible', 
+  },
+  coinText: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    includeFontPadding: false, 
+    textAlignVertical: 'center', 
+  },
+
 });
 
 export default HomeScreen;

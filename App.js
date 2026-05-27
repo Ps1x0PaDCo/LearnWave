@@ -24,6 +24,7 @@ import {
   ReferenceScreen,
   QuizScreen,
   LabScreen,
+  ShopScreen,
 } from './screens';
 
 // LogBox.ignoreLogs(['?? Сюда можно вписать конкретное варнинг-сообщение, которое нужно скрыть']);
@@ -43,10 +44,10 @@ const RootNavigation = () => {
   }
 
   return (
-    <Stack.Navigator 
-      screenOptions={{ 
-        headerShown: false, 
-        cardStyleInterpolator: CardStyleInterpolators.forHorizontalIOS 
+    <Stack.Navigator
+      screenOptions={{
+        headerShown: false,
+        cardStyleInterpolator: CardStyleInterpolators.forHorizontalIOS
       }}
     >
       {!isLoggedIn ? (
@@ -69,6 +70,7 @@ const RootNavigation = () => {
           <Stack.Screen name="Admin" component={AdminPanel} />
           <Stack.Screen name="LabScreen" component={LabScreen} />
           <Stack.Screen name="ReferenceScreen" component={ReferenceScreen} />
+          <Stack.Screen name="Shop" component={ShopScreen} />
         </>
       )}
     </Stack.Navigator>

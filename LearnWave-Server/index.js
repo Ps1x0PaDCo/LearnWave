@@ -75,7 +75,7 @@ const adminMiddleware = (req, res, next) => {
 // 1. РЕГИСТРАЦИЯ ЮЗЕРА (Уникален ТОЛЬКО email, имена могут повторяться!)
 app.post('/api/register', async (req, res) => {
   const { email, username, password } = req.body;
-  
+
   if (!email || !username || !password) {
     return res.status(400).json({ success: false, error: 'Заполните все обязательные поля.' });
   }
@@ -114,7 +114,7 @@ app.post('/api/register', async (req, res) => {
 // 2. АВТОРИЗАЦИЯ (ВХОД) — ФИКС ОБЪЕКТА ЮЗЕРА
 app.post('/api/login', async (req, res) => {
   const { email, password } = req.body;
-  
+
   if (!email || !password) {
     return res.status(400).json({ success: false, error: 'Заполните все поля.' });
   }
@@ -125,24 +125,24 @@ app.post('/api/login', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Неверный email или пароль.' });
     }
 
-    const user = result.rows[0]; // СТРОГО ПЕРВЫЙ ЭЛЕМЕНТ (ОБЪЕКТ)
-    
+    const user = result.rows[0];
+
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(400).json({ success: false, error: 'Неверный email или пароль.' });
     }
 
     // Обновляем стрик активности
-   let newStreak = user.streak_count || 0;
+    let newStreak = user.streak_count || 0;
     const today = new Date().toISOString().split('T')[0]; // Текущая дата (ГГГГ-ММ-ДД)
-    
+
     if (user.last_login) {
       const lastLoginDate = new Date(user.last_login).toISOString().split('T')[0];
-      
+
       if (lastLoginDate !== today) {
         const diffTime = Math.abs(new Date(today) - new Date(lastLoginDate));
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        
+
         if (diffDays === 1) {
           newStreak += 1; // Зашел на следующий день
         } else if (diffDays > 1) {
@@ -160,22 +160,22 @@ app.post('/api/login', async (req, res) => {
 
     // Зашиваем id и роль в JWT-токен
     const token = jwt.sign(
-      { id: user.id, role: user.role || 'student' }, 
-      process.env.JWT_SECRET, 
+      { id: user.id, role: user.role || 'student' },
+      process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
-    
-    // Возвращаем чистый плоский объект пользователя на фронтенд
-    return res.json({ 
-      success: true, 
-      token, 
-      user: { 
-        username: user.username, 
-        role: user.role || 'student', 
-        balance: user.balance || 0, 
-        streak_count: newStreak (user.streak_count || 0) + 1 
-      } 
+
+    return res.json({
+      success: true,
+      token,
+      user: {
+        username: user.username,
+        role: user.role || 'student',
+        balance: user.balance || 0,
+        streak_count: newStreak // ??
+      }
     });
+
 
   } catch (err) {
     console.error('? Критическая ошибка авторизации в PG:', err.message);
@@ -192,11 +192,11 @@ app.get('/api/profile', authMiddleware, async (req, res) => {
       'SELECT id, username, email, role, balance, streak_count FROM users WHERE id = $1',
       [req.user.id]
     );
-    
+
     if (result.rows.length === 0) {
       return res.status(404).json({ success: false, error: 'Пользователь не найден.' });
     }
-    
+
     // Возвращаем строго первую строку (объект), а не массив строк
     return res.json({ success: true, user: result.rows[0] });
   } catch (err) {
@@ -206,15 +206,64 @@ app.get('/api/profile', authMiddleware, async (req, res) => {
 });
 
 
-// 4. ПОЛУЧЕНИЕ СПИСКА КУРСОВ ДЛЯ СТУДЕНТОВ
+// 4. ПОЛУЧЕНИЕ СПИСКА КУРСОВ, СГРУППИРОВАННЫХ ПО КАТЕГОРИЯМ
 app.get('/api/courses', async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM courses ORDER BY id ASC');
-    res.json({ success: true, courses: result.rows });
+    // Делаем JOIN таблиц, чтобы вытащить курсы вместе с их категориями
+    const queryText = `
+      SELECT 
+        c.id AS category_id, 
+        c.title AS category_title, 
+        c.color AS category_color,
+        co.id AS course_id, 
+        co.title AS course_title, 
+        co.description, 
+        co.icon_name, 
+        co.color AS course_color, 
+        co.subject_key
+      FROM categories c
+      LEFT JOIN courses co ON c.id = co.category_id
+      ORDER BY c.id ASC, co.id ASC
+    `;
+
+    const result = await pool.query(queryText);
+
+    // Формируем чистую структуру для фронтенда
+    const categoriesMap = {};
+
+    result.rows.forEach(row => {
+      if (!categoriesMap[row.category_id]) {
+        categoriesMap[row.category_id] = {
+          id: row.category_id,
+          title: row.category_title,
+          color: row.category_color,
+          subjects: []
+        };
+      }
+
+      // Если у категории есть курс, добавляем его в массив subjects
+      if (row.course_id) {
+        categoriesMap[row.category_id].subjects.push({
+          id: row.course_id,
+          title: row.course_title,
+          description: row.description,
+          icon_name: row.icon_name,
+          color: row.course_color,
+          subject_key: row.subject_key
+        });
+      }
+    });
+
+    // Превращаем объект обратно в чистый массив категорий
+    const formattedCategories = Object.values(categoriesMap);
+
+    res.json({ success: true, categories: formattedCategories });
   } catch (err) {
-    res.status(500).json({ success: false, error: 'Ошибка при загрузке курсов' });
+    console.error('? Ошибка при загрузке сгруппированных курсов:', err.message);
+    res.status(500).json({ success: false, error: 'Ошибка при загрузке каталога курсов' });
   }
 });
+
 
 // 5. СОХРАНЕНИЕ ПРОГРЕССА СТУДЕНТА (ЗАЩИТА ОТ НАКРУТКИ МОНЕТ)
 app.post('/api/progress', authMiddleware, async (req, res) => {
@@ -285,7 +334,7 @@ app.get('/api/glossary', async (req, res) => {
 // DELETE ACCOUNT (HYBRID: ENGLISH LOGS + RUSSIAN RESPONSES)
 app.post('/api/user-delete-account', authMiddleware, async (req, res) => {
   console.log('\n--- [BACKEND: DELETE ACCOUNT STARTED] ---');
-  
+
   const { password } = req.body;
   const userId = req.user?.id;
 
@@ -302,7 +351,7 @@ app.post('/api/user-delete-account', authMiddleware, async (req, res) => {
   try {
     console.log(`?? Searching for user ID: ${userId} in PostgreSQL...`);
     const userResult = await pool.query('SELECT * FROM users WHERE id = $1', [userId]);
-    
+
     if (userResult.rows.length === 0) {
       console.log('? Error: User not found in database.');
       return res.status(404).json({ success: false, error: 'Пользователь не найден.' });
@@ -354,7 +403,7 @@ app.get('/api/admin/dashboard-stats', authMiddleware, adminMiddleware, async (re
   try {
     const usersCount = await pool.query('SELECT COUNT(*) FROM users');
     const coursesCount = await pool.query('SELECT COUNT(*) FROM courses');
-    
+
     res.json({
       success: true,
       stats: {
@@ -398,7 +447,7 @@ app.delete('/api/admin/courses/:id', authMiddleware, adminMiddleware, async (req
   const courseId = req.params.id;
   try {
     const result = await pool.query('DELETE FROM courses WHERE id = $1 RETURNING id', [courseId]);
-    
+
     if (result.rows.length === 0) {
       return res.status(404).json({ success: false, error: 'Данный курс не найден в базе.' });
     }
@@ -410,6 +459,83 @@ app.delete('/api/admin/courses/:id', authMiddleware, adminMiddleware, async (req
     res.status(500).json({ success: false, error: 'Ошибка сервера при удалении записи.' });
   }
 });
+
+// ПОЛУЧЕНИЕ ВСЕХ ТЕМ ДЛЯ СИНХРОНИЗАЦИИ (БЕЗОПАСНЫЙ ВАРИАНТ)
+app.get('/api/topics', async (req, res) => {
+  try {
+    // ?? ИСПРАВЛЕНО: Сортируем просто по id, чтобы база данных не ругалась на отсутствие sort_order
+    const result = await pool.query('SELECT * FROM topics ORDER BY id ASC');
+    res.json({ success: true, topics: result.rows });
+  } catch (err) {
+    console.error('? Ошибка при загрузке списка тем:', err.message);
+    res.status(500).json({ success: false, error: 'Ошибка сервера при загрузке тем' });
+  }
+});
+
+// ==========================================
+// ?? WAVE-SHOP (МАГАЗИН ЗА МОНЕТЫ)
+// ==========================================
+
+app.post('/api/shop/buy', authMiddleware, async (req, res) => {
+  const { item_type, item_value, price } = req.body;
+  const userId = req.user.id;
+
+  if (!item_type || !item_value || !price) {
+    return res.status(400).json({ success: false, error: 'Неполные данные о товаре.' });
+  }
+
+  try {
+    // 1. Проверяем текущий баланс пользователя
+    const userCheck = await pool.query('SELECT balance FROM users WHERE id = $1', [userId]);
+    if (userCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Пользователь не найден.' });
+    }
+
+    const currentBalance = userCheck.rows[0].balance || 0;
+
+    // 2. Проверяем, хватает ли монет
+    if (currentBalance < price) {
+      return res.status(400).json({ success: false, error: 'Недостаточно монет для покупки! Учите темы активнее. ??' });
+    }
+
+    // 3. Если товар — косметическая рамка, проверяем, не куплена ли она уже
+    if (item_type === 'frame') {
+      const frameCheck = await pool.query(
+        'SELECT id FROM user_inventory WHERE user_id = $1 AND item_type = $2 AND item_value = $3',
+        [userId, item_type, item_value]
+      );
+      if (frameCheck.rows.length > 0) {
+        return res.status(400).json({ success: false, error: 'Эта рамка уже куплена и доступна в профиле!' });
+      }
+    }
+
+    // 4. Открываем транзакцию для безопасного списания баланса
+    await pool.query('BEGIN');
+
+    // Списываем монеты
+    await pool.query('UPDATE users SET balance = balance - $1 WHERE id = $2', [price, userId]);
+
+    // Добавляем вещь в инвентарь
+    await pool.query(
+      'INSERT INTO user_inventory (user_id, item_type, item_value) VALUES ($1, $2, $3)',
+      [userId, item_type, item_value]
+    );
+
+    await pool.query('COMMIT');
+
+    // Рассчитываем новый баланс для возврата на фронтенд
+    const newBalance = currentBalance - price;
+
+    console.log(`?? [Shop]: Пользователь ID ${userId} купил ${item_value} за ${price} монет.`);
+    res.json({ success: true, newBalance, message: 'Покупка успешно совершена!' });
+
+  } catch (err) {
+    await pool.query('ROLLBACK');
+    console.error('? Ошибка транзакции магазина:', err.message);
+    res.status(500).json({ success: false, error: 'Ошибка сервера при обработке покупки.' });
+  }
+});
+
 
 // Запуск сервера
 const PORT = process.env.PORT || 5000;

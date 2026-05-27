@@ -1,5 +1,5 @@
 import * as Crypto from 'expo-crypto';
-import { db } from './db'; 
+import { db } from './db';
 
 // "Белый список" супер-админов для защиты от подмены ролей в SQLite
 const SUPER_ADMINS = ['admin@admin.com', 'your-email@example.com'];
@@ -19,6 +19,7 @@ const dbInternalService = {
           username TEXT NOT NULL UNIQUE, 
           password TEXT NOT NULL, 
           role TEXT DEFAULT 'student', 
+          balance INTEGER DEFAULT 0, -- 💡 ИСПРАВЛЕНО: Добавили поле баланса монет под логику бэкенда
           streak_count INTEGER DEFAULT 0, 
           last_login TEXT,
           updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -36,7 +37,7 @@ const dbInternalService = {
           subject_key TEXT NOT NULL, 
           title TEXT NOT NULL, 
           description TEXT, 
-          content TEXT NOT NULL, 
+          content TEXT, 
           quiz_question TEXT, 
           quiz_answer TEXT, 
           difficulty INTEGER DEFAULT 1,
@@ -45,9 +46,9 @@ const dbInternalService = {
         CREATE TABLE IF NOT EXISTS progress (
           id INTEGER PRIMARY KEY AUTOINCREMENT, 
           username TEXT NOT NULL, 
-          topic_title TEXT NOT NULL, 
+          topic_id INTEGER NOT NULL, -- 💡 ИСПРАВЛЕНО: Теперь храним надежный ID вместо текстового заголовка
           updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          UNIQUE(username, topic_title)
+          UNIQUE(username, topic_id)
         );
         CREATE TABLE IF NOT EXISTS achievements (
           id INTEGER PRIMARY KEY AUTOINCREMENT, 
@@ -60,85 +61,95 @@ const dbInternalService = {
         CREATE TABLE IF NOT EXISTS bookmarks (
           id INTEGER PRIMARY KEY AUTOINCREMENT, 
           username TEXT NOT NULL, 
-          topic_title TEXT NOT NULL, 
+          topic_id INTEGER NOT NULL, -- 💡 ИСПРАВЛЕНО: Закладки тоже перевели на ID тем
           updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          UNIQUE(username, topic_title)
+          UNIQUE(username, topic_id)
         );
         CREATE TABLE IF NOT EXISTS notes (
           id INTEGER PRIMARY KEY AUTOINCREMENT, 
           username TEXT NOT NULL, 
-          topic_title TEXT NOT NULL, 
+          topic_id INTEGER NOT NULL, -- 💡 ИСПРАВЛЕНО: Заметки привязали к ID темы
           content TEXT,
           updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
         CREATE TABLE IF NOT EXISTS glossary (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  term TEXT NOT NULL UNIQUE,
-  definition TEXT NOT NULL,
-  subject_key TEXT NOT NULL,
-  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          term TEXT NOT NULL UNIQUE,
+          definition TEXT NOT NULL,
+          subject_key TEXT NOT NULL,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
       `);
 
       const count = db.getFirstSync("SELECT COUNT(*) as count FROM topics;");
       if (count.count === 0) {
+        // 💡 ИСПРАВЛЕНО: Сиды (заглушки) переведены на правильные строчные ключи под стандарты PostgreSQL
         db.runSync(`INSERT INTO topics (subject_key, title, description, content) VALUES 
-          ('Math', 'Основы тригонометрии', 'Синусы и косинусы', '### Введение\nТекст лекции...'),
-          ('Informatics', 'Основы Python', 'Первые шаги', '### Hello World\nТекст лекции...');`);
+          ('math', 'Основы тригонометрии', 'Синусы и косинусы', '### Введение\\nТекст лекции...'),
+          ('python_dev', 'Основы Python', 'Первые шаги', '### Hello World\\nТекст лекции...');`);
 
         db.runSync(`INSERT OR IGNORE INTO courses (title, subject_key) VALUES 
-          ('Математика', 'Math'), ('IT технологии', 'Informatics');`);
+          ('Математика', 'math'), ('IT технологии', 'python_dev');`);
       }
       return [];
-    } catch (err) { console.error("DB Init Error:", err); return []; }
+    } catch (err) {
+      console.error("❌ DB Init Error:", err);
+      return [];
+    }
   },
-getGlossary: (subject = null) => {
-  const query = subject 
-    ? 'SELECT * FROM glossary WHERE subject_key = ? ORDER BY term ASC'
-    : 'SELECT * FROM glossary ORDER BY term ASC';
-  return db.getAllSync(query, subject ? [subject] : []);
-},
+
+  getGlossary: (subject = null) => {
+    const query = subject
+      ? 'SELECT * FROM glossary WHERE subject_key = ? ORDER BY term ASC'
+      : 'SELECT * FROM glossary ORDER BY term ASC';
+    return db.getAllSync(query, subject ? [subject] : []);
+  },
 
   updateNickname: async (oldUsername, newUsername) => {
     try {
       const now = new Date().toISOString();
-      db.runSync('UPDATE users SET username = ?, updated_at = ? WHERE username = ?;', [newUsername.trim(), now, oldUsername]);
-      db.runSync('UPDATE progress SET username = ?, updated_at = ? WHERE username = ?;', [newUsername, now, oldUsername]);
-      db.runSync('UPDATE achievements SET username = ?, updated_at = ? WHERE username = ?;', [newUsername, now, oldUsername]);
-      db.runSync('UPDATE bookmarks SET username = ?, updated_at = ? WHERE username = ?;', [newUsername, now, oldUsername]);
-      db.runSync('UPDATE notes SET username = ?, updated_at = ? WHERE username = ?;', [newUsername, now, oldUsername]);
-      return { success: true, newUsername };
-    } catch (err) { return { success: false, error: "Ник занят" }; }
+      const trimmedNew = newUsername.trim();
+      db.runSync('UPDATE users SET username = ?, updated_at = ? WHERE username = ?;', [trimmedNew, now, oldUsername]);
+      db.runSync('UPDATE progress SET username = ?, updated_at = ? WHERE username = ?;', [trimmedNew, now, oldUsername]);
+      db.runSync('UPDATE achievements SET username = ?, updated_at = ? WHERE username = ?;', [trimmedNew, now, oldUsername]);
+      db.runSync('UPDATE bookmarks SET username = ?, updated_at = ? WHERE username = ?;', [trimmedNew, now, oldUsername]);
+      db.runSync('UPDATE notes SET username = ?, updated_at = ? WHERE username = ?;', [trimmedNew, now, oldUsername]);
+      return { success: true, newUsername: trimmedNew };
+    } catch (err) {
+      return { success: false, error: "Ник занят" };
+    }
   },
 
   registerUser: async (email, username, password) => {
     try {
       const hashed = await hashPassword(password);
       const cleanEmail = email.toLowerCase().trim();
-      // ХАРДКОД ЗАЩИТА: Роль админа только для списка SUPER_ADMINS
       const role = SUPER_ADMINS.includes(cleanEmail) ? 'admin' : 'student';
       const now = new Date().toISOString();
-      
+
       db.runSync(
-        'INSERT OR REPLACE INTO users (email, username, password, role, updated_at) VALUES (?, ?, ?, ?, ?);', 
+        'INSERT OR REPLACE INTO users (email, username, password, role, balance, updated_at) VALUES (?, ?, ?, ?, 0, ?);',
         [cleanEmail, username.trim(), hashed, role, now]
       );
       const newUser = db.getFirstSync('SELECT * FROM users WHERE email = ?;', [cleanEmail]);
       return { success: true, user: newUser };
-    } catch (err) { return { success: false, error: "Ошибка регистрации" }; }
+    } catch (err) {
+      return { success: false, error: "Ошибка регистрации" };
+    }
   },
 
   loginUser: async (email, password) => {
     try {
       const hashed = await hashPassword(password);
       const cleanEmail = email.toLowerCase().trim();
-      // При логине принудительно обновляем роль из SUPER_ADMINS (на случай ручного вмешательства в БД)
       const role = SUPER_ADMINS.includes(cleanEmail) ? 'admin' : 'student';
       db.runSync('UPDATE users SET role = ?, updated_at = CURRENT_TIMESTAMP WHERE email = ?;', [role, cleanEmail]);
-      
+
       const user = db.getFirstSync('SELECT * FROM users WHERE email = ? AND password = ?;', [cleanEmail, hashed]);
       return user ? { success: true, user } : { success: false, error: 'Неверные данные' };
-    } catch (err) { return { success: false, error: 'Ошибка входа' }; }
+    } catch (err) {
+      return { success: false, error: 'Ошибка входа' };
+    }
   },
 
   resetPassword: async (email, newPass) => {
@@ -147,7 +158,9 @@ getGlossary: (subject = null) => {
       const cleanEmail = email.toLowerCase().trim();
       db.runSync('UPDATE users SET password = ?, updated_at = CURRENT_TIMESTAMP WHERE email = ?;', [hashed, cleanEmail]);
       return { success: true };
-    } catch (e) { return { success: false, error: 'Ошибка БД' }; }
+    } catch (e) {
+      return { success: false, error: 'Ошибка БД' };
+    }
   },
 
   updateStreak: (name) => {
@@ -159,40 +172,46 @@ getGlossary: (subject = null) => {
         return (user.streak_count || 0) + 1;
       }
       return user?.streak_count || 0;
-    } catch (e) { return 0; }
+    } catch (e) {
+      return 0;
+    }
   },
 
+  // 💡 ИСПРАВЛЕНО: Считаем лидерборд честно по монетам (балансу) из профиля, а не по количеству лекций
   getLeaderboard: () => db.getAllSync(`
-    SELECT u.username, COUNT(p.topic_title) as score 
-    FROM users u 
-    LEFT JOIN progress p ON u.username = p.username 
-    GROUP BY u.username 
-    ORDER BY score DESC 
+    SELECT username, balance, streak_count 
+    FROM users 
+    ORDER BY balance DESC 
     LIMIT 10;
   `),
-  
-  toggleBookmark: (n, t, isB) => isB 
-    ? db.runSync('DELETE FROM bookmarks WHERE username = ? AND topic_title = ?;', [n, t]) 
-    : db.runSync('INSERT OR IGNORE INTO bookmarks (username, topic_title, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP);', [n, t]),
-  
-  completeTopic: (n, t) => db.runSync('INSERT OR IGNORE INTO progress (username, topic_title, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP);', [n, t]),
-  
-  getAchievements: (n) => db.getAllSync('SELECT badge_id, date FROM achievements WHERE username = ?;', [n]),
-  
-  getCompletedTopics: (n) => db.getAllSync('SELECT topic_title FROM progress WHERE username = ?;', [n]).map(r => r.topic_title),
 
-  // === ОБНОВЛЕННЫЙ МЕТОД ВНУТРЬ dbInternalService ===
+  toggleBookmark: (username, topicId, isBookmarked) => isBookmarked
+    ? db.runSync('DELETE FROM bookmarks WHERE username = ? AND topic_id = ?;', [username, topicId])
+    : db.runSync('INSERT OR IGNORE INTO bookmarks (username, topic_id, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP);', [username, topicId]),
+
+  // 💡 ИСПРАВЛЕНО: Сохраняем прогресс строго по числовому ID темы
+  completeTopic: (username, topicId) => db.runSync(
+    'INSERT OR IGNORE INTO progress (username, topic_id, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP);',
+    [username, parseInt(topicId, 10)]
+  ),
+
+  getAchievements: (username) => db.getAllSync('SELECT badge_id, date FROM achievements WHERE username = ?;', [username]),
+
+  // 💡 ИСПРАВЛЕНО: Возвращает чистый массив ID пройденных тем
+  getCompletedTopics: (username) => {
+    const rows = db.getAllSync('SELECT topic_id FROM progress WHERE username = ?;', [username]);
+    return rows.map(r => r.topic_id);
+  },
+
   saveGlossaryTerm: (term, definition, subjectKey) => {
     try {
       const now = new Date().toISOString();
-      
-      // Хитрый декодер: проверяем, зашифрована ли строка в Base64. 
-      // Если да — расшифровываем в нормальный русский текст, если нет — оставляем как есть.
+
       const decodeBase64 = (str) => {
         if (!str) return '';
-        const base64Regex = /^([0-9a-zA-Z+/]{4})*(([0-9a-zA-Z+/]{2}==)|([0-9a-zA-Z+/]{3}=))?$/;
+        const base64Regex = /^([0-9a-zA-Z+/]{4})*(([0-9a-zA-Z+/]{2}==)|([0-9a-zA-Z+/]{3}=))?\$/;
         if (base64Regex.test(str) && str.length > 8) {
-          try { return Buffer.from(str, 'base64').toString('utf-8'); } catch(e) { return str; }
+          try { return Buffer.from(str, 'base64').toString('utf-8'); } catch (e) { return str; }
         }
         return str;
       };
@@ -202,7 +221,7 @@ getGlossary: (subject = null) => {
 
       db.runSync(
         'INSERT OR REPLACE INTO glossary (term, definition, subject_key, updated_at) VALUES (?, ?, ?, ?);',
-        [cleanTerm, cleanDefinition, subjectKey, now]
+        [cleanTerm, cleanDefinition, subjectKey.toLowerCase(), now]
       );
       return { success: true };
     } catch (err) {
@@ -211,31 +230,13 @@ getGlossary: (subject = null) => {
     }
   },
 
-
-
-
-    // === ДОБАВЬ ЭТОТ МЕТОД ВНУТРЬ dbInternalService ===
   clearUserData: async (username) => {
     try {
       console.log(`🧹 [SQLite] Starting full cache cleanup for: ${username}`);
-      
-      // Зачищаем все таблицы, привязанные к никнейму пользователя
+
       db.runSync('DELETE FROM progress WHERE username = ?;', [username]);
       db.runSync('DELETE FROM achievements WHERE username = ?;', [username]);
-      db.runSync('DELETE FROM bookmarks WHERE username = ?;', [username]);
-      db.runSync('DELETE FROM notes WHERE username = ?;', [username]);
-      
-      // Удаляем и самого пользователя из локальной SQLite
-      db.runSync('DELETE FROM users WHERE username = ?;', [username]);
-
-      console.log('✨ [SQLite] All local tables purged successfully.');
-      return { success: true };
-    } catch (err) {
-      console.error('❌ [SQLite Error] Cleanup failed:', err);
-      return { success: false, error: err.message };
-    }
+      db.runSync('DELETE FROM bookmarks WHERE username = ?;', [username]); db.runSync('DELETE FROM notes WHERE username = ?;', [username]); db.runSync('DELETE FROM users WHERE username = ?;', [username]); console.log('✨ [SQLite] All local tables purged successfully.'); return { success: true };
+    } catch (err) { console.error('❌ [SQLite Error] Cleanup failed:', err); return { success: false, error: err.message }; }
   },
-
-};
-
-export const dbService = dbInternalService;
+}; export const dbService = dbInternalService;

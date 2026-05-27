@@ -6,6 +6,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import apiClient, { profileService } from '../services/api';
 import { dbService } from '../services/database';
 import { db } from '../services/db';
+import { DeviceEventEmitter } from 'react-native';
 
 export const AuthContext = createContext();
 export const CoursesContext = createContext();
@@ -42,8 +43,8 @@ export const AuthProvider = ({ children }) => {
     }).start();
   };
 
-//Синхронизация прогресса
- const syncProgress = useCallback(async (nickname) => {
+  //Синхронизация прогресса
+  const syncProgress = useCallback(async (nickname) => {
     try {
       // ИСПРАВЛЕНО: Лог на английском, чтобы Windows терминал не выдавал ромбики
       console.log('?? [Sync] Starting progress synchronization with PostgreSQL...');
@@ -61,7 +62,7 @@ export const AuthProvider = ({ children }) => {
     }
   }, []);
 
-// === ОБНОВЛЕННЫЙ БЛОК СИНХРОНИЗАЦИИ И АВТОРИЗАЦИИ ===
+  // === ОБНОВЛЕННЫЙ БЛОК СИНХРОНИЗАЦИИ И АВТОРИЗАЦИИ ===
 
   // Функция синхронизации глоссария с PostgreSQL в локальную SQLite
   const syncGlossary = useCallback(async () => {
@@ -80,6 +81,33 @@ export const AuthProvider = ({ children }) => {
     }
   }, []);
 
+  // Функция автоматического скачивания тем из облака в локальную SQLite
+  const syncTopics = useCallback(async () => {
+    try {
+      console.log('?? [Sync] Starting topics synchronization with PostgreSQL...');
+      const res = await apiClient.get('/api/topics');
+      if (res.data.success) {
+        const cloudTopics = res.data.topics || [];
+
+        // Сначала очистим старые локальные темы, чтобы не дублировать
+        db.runSync('DELETE FROM topics');
+
+        // Записываем новые темы в SQLite телефона
+        cloudTopics.forEach(topic => {
+          db.runSync(
+            'INSERT INTO topics (id, subject_key, title) VALUES (?, ?, ?)',
+            [topic.id, topic.subject_key, topic.title]
+          );
+        });
+        console.log('? [Sync] Topics synced successfully (PostgreSQL -> SQLite).');
+      }
+    } catch (e) {
+      console.log("?? [Sync] Topics offline mode activated. Using cached local topics.");
+    }
+  }, []);
+
+
+  // 2. Внутри useEffect (в самом конце метода init(), перед строкой init();) замени старый global на этот код:
   useEffect(() => {
     async function init() {
       try {
@@ -87,57 +115,65 @@ export const AuthProvider = ({ children }) => {
         const savedTheme = await AsyncStorage.getItem('user_theme');
         if (savedTheme) setIsDarkMode(savedTheme === 'dark');
 
-        // Запускаем синхронизацию справочника формул при старте приложения
-        await syncGlossary();
+        syncGlossary();
+        syncTopics();
 
-               // --- (АВТО-ВХОД) ---
         const token = await SecureStore.getItemAsync('user_token');
         if (token) {
           const res = await apiClient.get('/api/profile').catch(() => null);
-          
+
           if (res?.data?.success && res.data.user && res.data.user.length > 0) {
-            const fetchedUser = res.data.user[0]; // Берем первый объект из массива rows
-            
+            const fetchedUser = res.data.user;
             setUser(fetchedUser);
             setIsLoggedIn(true);
             setStreak(fetchedUser.streak_count || 0);
-            
-            // Синхронизируем данные только после успешной проверки профиля
             await syncProgress(fetchedUser.username);
-            await syncGlossary();
           } else {
-            // Если токен устарел или удален на сервере, чистим память устройства
             await SecureStore.deleteItemAsync('user_token');
           }
         }
 
-      } catch (e) { 
-        console.log('? [Init] Ошибка инициализации:', e); 
-      } finally { 
-        setIsLoading(false); 
+        // ?? ИСПРАВЛЕНО: Слушаем событие разлогина из api.js внутри тела хука useEffect!
+        const subscription = DeviceEventEmitter.addListener('FORCE_LOGOUT', () => {
+          logout();
+        });
+
+        // Чистим слушатель при размонтировании компонента, чтобы не было утечек памяти
+        return () => subscription.remove();
+
+      } catch (e) {
+        console.log('? [Init] Ошибка инициализации:', e);
+      } finally {
+        setIsLoading(false);
       }
     }
     init();
-  }, [syncProgress, syncGlossary]); // Добавили syncGlossary в зависимости
+  }, [syncProgress, syncGlossary, syncTopics]);
 
-  const login = async (email, password) => {
-    try {
-      const response = await apiClient.post('/api/login', { email, password });
-      if (response.data.success) {
-        const { token, user: userData } = response.data;
-        await SecureStore.setItemAsync('user_token', token);
-        await AsyncStorage.setItem('current_user', userData.username);
-        
-        setUser(userData);
-        setIsLoggedIn(true);
-        setStreak(userData.streak_count || 0);
-        
-        return { success: true };
-      }
-    } catch (error) {
-      return { success: false, error: error.response?.data?.error || 'Неверный логин или пароль' };
+
+const login = async (email, password) => {
+  try {
+    const response = await apiClient.post('/api/login', { email, password });
+    if (response.data.success) {
+      const { token, user: userData } = response.data;
+      await SecureStore.setItemAsync('user_token', token);
+      await AsyncStorage.setItem('current_user', userData.username);
+      setUser(userData);
+      setIsLoggedIn(true);
+      setStreak(userData.streak_count || 0);
+      
+      // ?? ВОТ ЗДЕСЬ КРАШИТСЯ:
+      await syncProgress(userData.username);
+      await syncGlossary();
+      
+      return { success: true };
     }
-  };
+  } catch (error) {
+    // Если произошел краш в блоке выше, ошибка улетает сюда и возвращает дефолтный текст:
+    return { success: false, error: error.response?.data?.error || 'Неверный логин или пароль' };
+  }
+};
+
 
   const register = async (email, username, password) => {
     try {
@@ -163,13 +199,13 @@ export const AuthProvider = ({ children }) => {
   const deleteUserAccount = async (password) => {
     try {
       console.log('?? [AuthContext] Sending secure delete request via profileService...');
-      
+
       const currentUserNickname = user?.username;
       const response = await profileService.deleteAccount(password);
-      
+
       if (response.data.success) {
         console.log('?? [AuthContext] Deletion successful. Clearing device cache...');
-        
+
         // Чистим локальную SQLite при удалении
         if (currentUserNickname) {
           await dbService.clearUserData(currentUserNickname);
@@ -190,9 +226,9 @@ export const AuthProvider = ({ children }) => {
       }
     } catch (error) {
       console.log('? [AuthContext] Deletion error details:', error.response?.data?.error || error.message);
-      return { 
-        success: false, 
-        error: error.response?.data?.error || 'Ошибка проверки пароля или таймаут сервера.' 
+      return {
+        success: false,
+        error: error.response?.data?.error || 'Ошибка проверки пароля или таймаут сервера.'
       };
     }
   };
@@ -201,7 +237,7 @@ export const AuthProvider = ({ children }) => {
   // --- НАЧАЛО ПРАВКИ 3 (НАЧИСЛЕНИЕ МОНЕТ НА КЛИЕНТЕ) ---
   const completeTopic = (u, t, id) => {
     dbService.completeTopic(u, t);
-    
+
     // Отправляем прогресс на сервер и сразу забираем награду в стейт
     apiClient.post('/api/progress', { topic_id: id })
       .then((res) => {
@@ -214,9 +250,9 @@ export const AuthProvider = ({ children }) => {
 
     setCompletedCourses(prev => {
       const updated = [...new Set([...prev, t])];
-      const currentXP = (user?.balance || 0) + 50; 
+      const currentXP = (user?.balance || 0) + 50;
       const award = checkAchievementTriggers(updated.length, streak, currentXP);
-      
+
       if (award) triggerAchievementPopUp(award);
       return updated;
     });
@@ -224,7 +260,7 @@ export const AuthProvider = ({ children }) => {
 
   return (
     <AuthContext.Provider value={{
-      user, isLoggedIn, isDarkMode, streak, isLoading, 
+      user, isLoggedIn, isDarkMode, streak, isLoading,
       nickname: user?.username, userRole: user?.role,
       login, register, logout, deleteUserAccount,
       toggleTheme: async () => {
@@ -237,7 +273,7 @@ export const AuthProvider = ({ children }) => {
     }}>
       <CoursesContext.Provider value={{ completedCourses, setCompletedCourses }}>
         {children}
-        
+
         {/* ГЛОБАЛЬНЫЙ POP-UP УВЕДОМЛЕНИЙ О ДОСТИЖЕНИЯХ */}
         <Modal visible={achievementModal} transparent animationType="fade">
           <View style={popupStyles.overlay}>
@@ -248,9 +284,9 @@ export const AuthProvider = ({ children }) => {
               <Text style={popupStyles.title}>Достижение разблокировано!</Text>
               <Text style={popupStyles.name}>«{unlockedAward?.title}»</Text>
               <Text style={popupStyles.sub}>Загляните во вкладку достижений, чтобы забрать награду.</Text>
-              
-              <TouchableOpacity 
-                style={[popupStyles.btn, { backgroundColor: unlockedAward?.color || '#4A90E2' }]} 
+
+              <TouchableOpacity
+                style={[popupStyles.btn, { backgroundColor: unlockedAward?.color || '#4A90E2' }]}
                 onPress={() => {
                   scaleAnim.setValue(0);
                   setAchievementModal(false);

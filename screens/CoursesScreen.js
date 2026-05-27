@@ -1,41 +1,35 @@
 import React, { useContext, useState, useEffect } from 'react';
 import { 
   View, Text, StyleSheet, ScrollView, TouchableOpacity, 
-  StatusBar, Platform, ActivityIndicator 
+  StatusBar, ActivityIndicator 
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AuthContext } from '../context/AuthContext';
 import { getThemeColors } from '../styles/colors';
-import apiClient from '../services/api'; // ВАЖНО: Добавь этот импорт
-import { db } from '../services/db';     // ВАЖНО: Добавь этот импорт
+import apiClient from '../services/api';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Haptics from 'expo-haptics';
-
-// Твои статичные категории остаются...
-const CATEGORIES = [
-  // ... (твой массив без изменений)
-];
 
 const CoursesScreen = ({ navigation }) => {
   const { isDarkMode } = useContext(AuthContext);
   const colors = getThemeColors(isDarkMode);
   
   const [loading, setLoading] = useState(true);
-  const [dynamicCourses, setDynamicCourses] = useState([]); // Для данных из Postgres
+  const [catalog, setCatalog] = useState([]); // Сюда прилетят категории из БД
 
   useEffect(() => {
     const loadAllData = async () => {
       setLoading(true);
       try {
-        console.log("📡 [Courses] Запрос к серверу...");
-        const response = await apiClient.get('/api/courses'); // ПРОВЕРЬ /api/
+        console.log("📡 [Courses] Запрос динамического каталога...");
+        const response = await apiClient.get('/api/courses'); 
         
         if (response.data.success) {
-          console.log("✅ [Courses] Данные получены:", response.data.courses.length);
-          setDynamicCourses(response.data.courses);
+          console.log("✅ [Courses] Структура каталога получена:", response.data.categories.length);
+          setCatalog(response.data.categories);
         }
       } catch (err) {
-        console.log("❌ [Courses] Ошибка:", err.message);
+        console.log("❌ [Courses] Ошибка получения каталога:", err.message);
       } finally {
         setLoading(false);
       }
@@ -43,9 +37,8 @@ const CoursesScreen = ({ navigation }) => {
     loadAllData();
   }, []);
 
-
-   // Обновляем функцию перехода, чтобы она поддерживала динамические данные
   const handleSelect = (key, name) => {
+    if (!key) return; // Защита от пустых переходов
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     navigation.navigate('SubjectSelection', { 
       subjectKey: key, 
@@ -80,63 +73,54 @@ const CoursesScreen = ({ navigation }) => {
             Выберите интересующее вас направление для начала обучения
           </Text>
 
-          {/* --- БЛОК ДИНАМИЧЕСКИХ КУРСОВ (ИЗ POSTGRESQL) --- */}
-          {dynamicCourses.length > 0 && (
-            <View style={styles.section}>
+          {/* --- ПОЛНОСТЬЮ ДИНАМИЧЕСКИЙ ВЫВОД ИЗ БАЗЫ ДАННЫХ --- */}
+          {catalog.map((category) => (
+            <View key={category.id} style={styles.section}>
+              {/* Заголовок категории (берется из PostgreSQL) */}
               <View style={styles.sectionHeader}>
-                <View style={[styles.dot, { backgroundColor: colors.primary }]} />
-                <Text style={[styles.sectionLabel, { color: colors.textPrimary }]}>ДОСТУПНО В ОБЛАКЕ</Text>
+                <View style={[styles.dot, { backgroundColor: category.color || colors.primary }]} />
+                <Text style={[styles.sectionLabel, { color: colors.textPrimary }]}>
+                  {(category.title || 'Раздел').toUpperCase()}
+                </Text>
               </View>
               
-              {dynamicCourses.map((course) => (
-                <TouchableOpacity 
-                  key={course.id}
-                  style={[styles.subjectCard, { backgroundColor: colors.surface, borderColor: colors.primary + '40' }]}
-                  onPress={() => handleSelect(course.subject_key, course.title)}
-                  activeOpacity={0.8}
-                >
-                  <View style={[styles.iconBox, { backgroundColor: colors.primary + '15' }]}>
-                    <Ionicons name="cloud-download-outline" size={26} color={colors.primary} />
-                  </View>
-                  <View style={styles.subjectInfo}>
-                    <Text style={[styles.subjectName, { color: colors.textPrimary }]}>{course.title}</Text>
-                    <Text style={[styles.subjectMeta, { color: colors.textMuted }]}>Синхронизировано с сервером</Text>
-                  </View>
-                  <View style={[styles.arrowBox, { backgroundColor: colors.primary }]}>
-                      <Ionicons name="star" size={16} color="#FFF" />
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
+              {/* Список курсов внутри этой категории */}
+              {category.subjects.map((sub) => {
+                // Преобразуем строковые имена иконок в Emoji
+                const emojiMap = {
+                  'book': '📚',
+                  'code': '💻',
+                  'calculator': '🧮',
+                  'flask': '🧪',
+                  'school': '🏫',
+                  'atom': '⚛️',
+                  'brain': '🧠'
+                };
+                const currentEmoji = emojiMap[sub.icon_name] || '🚀';
+                const courseColor = sub.color || category.color || colors.primary;
 
-          {/* --- СТАТИЧЕСКИЕ КАТЕГОРИИ --- */}
-          {CATEGORIES.map((cat, idx) => (
-            <View key={idx} style={styles.section}>
-              <View style={styles.sectionHeader}>
-                  <View style={[styles.dot, { backgroundColor: cat.color }]} />
-                  <Text style={[styles.sectionLabel, { color: colors.textPrimary }]}>{cat.title.toUpperCase()}</Text>
-              </View>
-              
-              {cat.subjects.map((sub) => (
-                <TouchableOpacity 
-                  key={sub.key}
-                  style={[styles.subjectCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
-                  onPress={() => handleSelect(sub.key, sub.name)}
-                  activeOpacity={0.8}
-                >
-                  <View style={[styles.iconBox, { backgroundColor: cat.color + '15' }]}>
-                    <Ionicons name={sub.icon} size={26} color={cat.color} />
-                  </View>
-                  <View style={styles.subjectInfo}>
-                    <Text style={[styles.subjectName, { color: colors.textPrimary }]}>{sub.name}</Text>
-                    <Text style={[styles.subjectMeta, { color: colors.textMuted }]}>{sub.desc}</Text>
-                  </View>
-                  <View style={[styles.arrowBox, { backgroundColor: colors.background }]}>
+                return (
+                  <TouchableOpacity 
+                    key={sub.id}
+                    style={[styles.subjectCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                    onPress={() => handleSelect(sub.subject_key, sub.title)}
+                    activeOpacity={0.8}
+                  >
+                    <View style={[styles.iconBox, { backgroundColor: courseColor + '15' }]}>
+                      <Text style={{ fontSize: 26 }}>{currentEmoji}</Text>
+                    </View>
+                    <View style={styles.subjectInfo}>
+                      <Text style={[styles.subjectName, { color: colors.textPrimary }]}>{sub.title}</Text>
+                      <Text style={[styles.subjectMeta, { color: colors.textMuted }]}>
+                        {sub.description || 'Доступно для обучения'}
+                      </Text>
+                    </View>
+                    <View style={[styles.arrowBox, { backgroundColor: colors.background }]}>
                       <Ionicons name="chevron-forward" size={16} color={colors.primary} />
-                  </View>
-                </TouchableOpacity>
-              ))}
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           ))}
         </ScrollView>

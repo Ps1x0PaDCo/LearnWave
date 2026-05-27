@@ -12,3 +12,4 @@ export { default as AdminPanel } from './AdminPanel';
 export { default as ReferenceScreen } from './ReferenceScreen';
 export { default as QuizScreen } from './QuizScreen';
 export { default as LabScreen } from './LabScreen';
+export { default as ShopScreen } from './ShopScreen';
