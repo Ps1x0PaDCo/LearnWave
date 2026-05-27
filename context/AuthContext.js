@@ -45,24 +45,42 @@ export const AuthProvider = ({ children }) => {
     }).start();
   };
 
-  //Синхронизация прогресса
+  // Синхронизации прогресса
   const syncProgress = useCallback(async (nickname) => {
     try {
-      // ИСПРАВЛЕНО: Лог на английском, чтобы Windows терминал не выдавал ромбики
-      console.log('?? [Sync] Starting progress synchronization with PostgreSQL...');
+      console.log('📡 [Sync] Starting progress synchronization with PostgreSQL...');
       const res = await apiClient.get('/api/progress');
+      
       if (res.data.success) {
-        const cloudCompleted = res.data.completed;
-        cloudCompleted.forEach(t => dbService.completeTopic(nickname, t));
-        setCompletedCourses(cloudCompleted);
-        console.log('? [Sync] Databases synced successfully (PostgreSQL -> SQLite).');
+        const cloudCompleted = res.data.completed || []; // Массив ID с сервера (например [1, 2])
+        
+        // 💡 ИСПРАВЛЕНО: Форматируем прилетающие ID с сервера в строки 'topic_1'
+        const formattedKeys = cloudCompleted.map(id => typeof id === 'object' ? `topic_${id.topic_id}` : `topic_${id}`);
+        
+        // Записываем отформатированные текстовые ключи в локальную базу SQLite
+        formattedKeys.forEach(topicKey => dbService.completeTopic(nickname, topicKey));
+        
+        // Клади в стейт правильные строки, чтобы экран их распознал!
+        setCompletedCourses(formattedKeys);
+        console.log('✅ [Sync] Databases synced successfully (PostgreSQL -> SQLite).');
       }
     } catch (e) {
-      console.log("?? [Sync] Offline mode activated. Loading local progress from SQLite.");
-      const local = dbService.getCompletedTopics(nickname);
-      setCompletedCourses(local || []);
+      console.log("⚠️ [Sync] Offline mode activated. Loading local progress from SQLite.");
+      
+      // 💡 ИСПРАВЛЕНО: Прямой и безопасный запрос в SQLite, если сервер недоступен
+      try {
+        const done = db.getAllSync(
+          "SELECT topic_key FROM user_progress WHERE username = ? AND status = 'completed'",
+          [nickname]
+        );
+        setCompletedCourses(done.map(row => row.topic_key));
+      } catch (sqliteErr) {
+        console.log('❌ Ошибка чтения оффлайн-прогресса:', sqliteErr.message);
+        setCompletedCourses([]);
+      }
     }
   }, []);
+
 
   // === ОБНОВЛЕННЫЙ БЛОК СИНХРОНИЗАЦИИ И АВТОРИЗАЦИИ ===
 
