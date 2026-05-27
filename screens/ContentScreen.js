@@ -1,213 +1,234 @@
-import React, { useContext, useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useContext, useRef } from 'react';
 import { 
-  View, Text, TouchableOpacity, ScrollView, StyleSheet, 
-  Dimensions, TextInput, Alert, Modal, StatusBar, Platform 
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, 
+  StatusBar, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform, Keyboard 
 } from 'react-native';
-import { Image } from 'expo-image';
-import ConfettiCannon from 'react-native-confetti-cannon';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { AuthContext, CoursesContext } from '../context/AuthContext';
 import { getThemeColors } from '../styles/colors';
+import { db } from '../services/db';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Haptics from 'expo-haptics';
 
-const { width } = Dimensions.get('window');
-
 const ContentScreen = ({ route, navigation }) => {
-  const { topic } = route.params;
-  const { isDarkMode, nickname, completeTopic, toggleBookmark, executeRaw } = useContext(AuthContext);
-  const { completedCourses } = useContext(CoursesContext);
+  // 💡 ИСПРАВЛЕНО: Безопасный универсальный прием параметров (защита от undefined)
+  const params = route.params || {};
+  const topicId = params.topicId || 1;
+  const topicTitle = params.topicTitle || 'Лекция';
+
+  const { isDarkMode, user } = useContext(AuthContext);
+  const { completedCourses } = useContext(CoursesContext); 
   const colors = getThemeColors(isDarkMode);
+
+  const [loading, setLoading] = useState(true);
+  const [content, setContent] = useState('');
+  const [description, setDescription] = useState('');
   
-  const [isB, setIsB] = useState(false);
-  const [note, setNote] = useState('');
-  const [showNote, setShowNote] = useState(false);
-  const [rate, setRate] = useState(0);
-  const conf = useRef(null);
+  // Состояния для закладок и заметок (Твоя оригинальная логика)
+  const [isBookmarked, setIsBookmarked] = useState(false);
+  const [noteText, setNoteText] = useState('');
+  const [isSavingNote, setIsSavingNote] = useState(false);
 
-  const isAlreadyDone = useMemo(() => 
-    (completedCourses || []).includes(topic.title), 
-  [completedCourses, topic.title]);
-
-  // Проверка наличия квиза в данных темы
-  const hasQuiz = useMemo(() => !!(topic.quiz_question && topic.quiz_answer), [topic]);
+  const username = user?.username || 'guest';
 
   useEffect(() => {
-    if (executeRaw) {
-      const n = executeRaw('SELECT content FROM notes WHERE username = ? AND topic_title = ?', [nickname, topic.title]);
-      if (n?.length > 0) setNote(n[0].content);
-      
-      const b = executeRaw('SELECT id FROM bookmarks WHERE username = ? AND topic_title = ?', [nickname, topic.title]);
-      setIsB(b?.length > 0);
-    }
-  }, [nickname, topic.title]);
+    const loadData = () => {
+      try {
+        // 1. Загружаем основной текст лекции
+        const row = db.getFirstSync('SELECT content, description FROM topics WHERE id = ?', [topicId]);
+        if (row) {
+          setContent(row.content || 'Текст лекции находится в разработке...');
+          setDescription(row.description || '');
+        }
 
-  const saveNote = () => {
-    executeRaw('INSERT OR REPLACE INTO notes (username, topic_title, content) VALUES (?, ?, ?)', [nickname, topic.title, note]);
-    setShowNote(false);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        // 2. Проверяем, находится ли лекция в закладках у текущего юзера
+        const bookmarkRow = db.getFirstSync(
+          'SELECT id FROM bookmarks WHERE username = ? AND topic_id = ?', 
+          [username, topicId]
+        );
+        setIsBookmarked(!!bookmarkRow);
+
+        // 3. Загружаем сохраненную заметку пользователя к этой лекции
+        const noteRow = db.getFirstSync(
+          'SELECT content FROM notes WHERE username = ? AND topic_id = ?', 
+          [username, topicId]
+        );
+        setNoteText(noteRow?.content || '');
+
+      } catch (e) {
+        console.log('❌ Ошибка SQLite на экране лекции:', e.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadData();
+  }, [topicId, username]);
+
+  // Переключение состояния закладки (ИСПРАВЛЕНО под topic_id)
+  const handleToggleBookmark = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    try {
+      if (isBookmarked) {
+        db.runSync('DELETE FROM bookmarks WHERE username = ? AND topic_id = ?', [username, topicId]);
+        setIsBookmarked(false);
+      } else {
+        db.runSync('INSERT OR IGNORE INTO bookmarks (username, topic_id) VALUES (?, ?)', [username, topicId]);
+        setIsBookmarked(true);
+      }
+    } catch (e) {
+      console.log('❌ Ошибка работы с закладками:', e.message);
+    }
   };
 
-  const renderedContent = useMemo(() => {
-    if (!topic.content) return null;
-    const parts = topic.content.split(/(\[FORMULA\].*?\[\/FORMULA\]|\[IMPORTANT\].*?\[\/IMPORTANT\]|\[IMAGE\].*?\[\/IMAGE\]|### .*?\n)/gs);
-
-    return parts.map((part, idx) => {
-      if (!part || part.trim() === '') return null;
-      if (part.startsWith('[IMAGE]')) {
-        const url = part.replace(/\[\/?IMAGE\]/g, '').trim();
-        return (
-          <View key={`img-${idx}`} style={styles.imageWrapper}>
-            <Image source={{ uri: url }} style={styles.lectureImage} contentFit="contain" transition={500} />
-            <Text style={[styles.imageCaption, { color: colors.textMuted }]}>Иллюстрация к теме</Text>
-          </View>
-        );
-      }
-      if (part.startsWith('###')) return <Text key={`h3-${idx}`} style={[styles.h3, { color: colors.primary }]}>{part.replace('###', '').trim()}</Text>;
-      if (part.startsWith('[FORMULA]')) return (
-        <View key={`form-${idx}`} style={[styles.formulaCard, { backgroundColor: colors.primary + '10', borderColor: colors.primary }]}>
-          <Text style={[styles.formulaText, { color: colors.textPrimary }]}>{part.replace(/\[\/?FORMULA\]/g, '').trim()}</Text>
-        </View>
+  // Сохранение текста заметки в SQLite (ИСПРАВЛЕНО под topic_id)
+  const handleSaveNote = () => {
+    Keyboard.dismiss();
+    setIsSavingNote(true);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    
+    try {
+      db.runSync(
+        'INSERT OR REPLACE INTO notes (username, topic_id, content) VALUES (?, ?, ?)',
+        [username, topicId, noteText.trim()]
       );
-      if (part.startsWith('[IMPORTANT]')) return (
-        <View key={`imp-${idx}`} style={[styles.importantCard, { backgroundColor: isDarkMode ? '#2D3748' : '#FFF5F5' }]}>
-          <View style={styles.importantHeader}><Ionicons name="alert-circle" size={18} color="#E53E3E" /><Text style={styles.importantLabel}>ВАЖНОЕ ПРАВИЛО</Text></View>
-          <Text style={[styles.importantText, { color: colors.textPrimary }]}>{part.replace(/\[\/?IMPORTANT\]/g, '').trim()}</Text>
-        </View>
-      );
-      return <Text key={`txt-${idx}`} style={[styles.paragraph, { color: colors.textPrimary }]}>{part.trim()}</Text>;
-    });
-  }, [topic.content, colors, isDarkMode]);
-
-
-  const handleFinish = useCallback(async () => {
-    if (isAlreadyDone) {
-      Alert.alert("Информация", "Вы уже изучили эту тему.");
-      return;
+    } catch (e) {
+      console.log('❌ Ошибка сохранения заметки:', e.message);
+    } finally {
+      setIsSavingNote(false);
     }
+  };
 
-    // Если есть квиз — идем на экран теста (логику синхронизации добавим там)
-    if (hasQuiz) {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      navigation.navigate('QuizScreen', { topic });
-    } else {
-      // ЕСЛИ КВИЗА НЕТ — СИНХРОНИЗИРУЕМ СРАЗУ
-      try {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        
-        // 1. Сохраняем локально (SQLite)
-        completeTopic(nickname, topic.title); 
-        
-        // 2. Отправляем в облако (PostgreSQL)
-        // ВНИМАНИЕ: убедись, что в объекте topic есть id из базы данных
-        await apiClient.post('/progress', { topic_id: topic.id });
+  const handleStartQuiz = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    navigation.navigate('QuizScreen', { topicId, topicTitle });
+  };
 
-        conf.current?.start(); 
-        Alert.alert("Успех!", "Прогресс сохранен в облаке и на устройстве.");
-      } catch (error) {
-        // Если интернета нет, всё равно зачтем локально
-        completeTopic(nickname, topic.title);
-        Alert.alert("Оффлайн-режим", "Сохранено локально. Синхронизация произойдет позже.");
-      }
-    }
-  }, [isAlreadyDone, hasQuiz, nickname, topic, completeTopic, navigation]);
+  const isCompleted = completedCourses.includes(topicId);
 
+  if (loading) {
+    return (
+      <View style={[styles.center, { backgroundColor: colors.background }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
-      
-      <View style={[styles.header, { paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight + 10 : 20 }]}>
-        <TouchableOpacity style={styles.closeBtn} onPress={() => navigation.goBack()}>
-          <Ionicons name="close" size={28} color={colors.textPrimary} />
-        </TouchableOpacity>
-        <View style={styles.headerRight}>
-          <TouchableOpacity onPress={() => setShowNote(true)} style={styles.iconBtn}>
-            <Ionicons name="create-outline" size={24} color={colors.primary} />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => { toggleBookmark(nickname, topic.title, isB); setIsB(!isB); }} style={styles.iconBtn}>
-            <Ionicons name={isB ? "bookmark" : "bookmark-outline"} size={24} color={colors.primary} />
-          </TouchableOpacity>
-        </View>
-      </View>
+    <KeyboardAvoidingView 
+      style={{ flex: 1, backgroundColor: colors.background }} 
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
-        <Text style={[styles.mainTitle, { color: colors.textPrimary }]}>{topic.title}</Text>
-        <View style={[styles.accentLine, { backgroundColor: colors.primary }]} />
-
-        <View style={styles.contentBody}>{renderedContent}</View>
-        
-        <TouchableOpacity 
-          style={[styles.finishBtn, { backgroundColor: isAlreadyDone ? '#2ECC71' : colors.primary }]} 
-          onPress={handleFinish}
-        >
-          <Text style={styles.finishBtnText}>
-            {isAlreadyDone ? 'Тема изучена' : (hasQuiz ? 'Перейти к тесту' : 'Завершить изучение')}
+        {/* HEADER С КНОПКОЙ ЗАКЛАДКИ */}
+        <View style={styles.header}>
+          <TouchableOpacity 
+            style={[styles.backBtn, { backgroundColor: colors.surface, borderColor: colors.border }]} 
+            onPress={() => navigation.goBack()}
+          >
+            <Ionicons name="chevron-back" size={24} color={colors.textPrimary} />
+          </TouchableOpacity>
+          
+          <Text style={[styles.headerTitle, { color: colors.textPrimary }]} numberOfLines={1}>
+            {topicTitle}
           </Text>
-          <Ionicons name={isAlreadyDone ? "checkmark-done" : (hasQuiz ? "help-circle" : "checkmark-circle")} size={22} color="#FFF" />
-        </TouchableOpacity>
 
-        <View style={styles.ratingBox}>
-          <Text style={[styles.rateLabel, { color: colors.textMuted }]}>ОЦЕНИТЕ МАТЕРИАЛ</Text>
-          <View style={styles.stars}>
-            {[1, 2, 3, 4, 5].map(s => (
-              <TouchableOpacity key={s} onPress={() => { setRate(s); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}>
-                <Ionicons name={rate >= s ? "star" : "star-outline"} size={32} color="#F1C40F" />
-              </TouchableOpacity>
-            ))}
-          </View>
+          <TouchableOpacity 
+            style={[styles.backBtn, { backgroundColor: colors.surface, borderColor: colors.border }]} 
+            onPress={handleToggleBookmark}
+          >
+            <Ionicons 
+              name={isBookmarked ? "bookmark" : "bookmark-outline"} 
+              size={22} 
+              color={isBookmarked ? "#F1C40F" : colors.textPrimary} 
+            />
+          </TouchableOpacity>
         </View>
-      </ScrollView>
 
-      <Modal visible={showNote} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalBox, { backgroundColor: colors.surface }]}>
-            <Text style={[styles.modalT, { color: colors.textPrimary }]}>Твоя заметка</Text>
-            <TextInput multiline placeholder="Запиши что-то важное..." placeholderTextColor={colors.textMuted} value={note} onChangeText={setNote} style={[styles.modalInput, { color: colors.textPrimary, borderColor: colors.border }]} />
-            <View style={styles.modalActions}>
-              <TouchableOpacity onPress={() => setShowNote(false)}><Text style={{ color: colors.textMuted, fontWeight: 'bold' }}>Отмена</Text></TouchableOpacity>
-              <TouchableOpacity onPress={saveNote} style={[styles.saveBtn, { backgroundColor: colors.primary }]}><Text style={styles.saveBtnText}>Сохранить</Text></TouchableOpacity>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+          {/* КРАТКОЕ ОПИСАНИЕ */}
+          {description ? (
+            <View style={[styles.descBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <Text style={[styles.descText, { color: colors.textMuted }]}>{description}</Text>
             </View>
+          ) : null}
+
+          {/* ОСНОВНОЙ ТЕКСТ ЛЕКЦИИ */}
+          <Text style={[styles.lectureText, { color: colors.textPrimary }]}>
+            {content.replace(/\\n/g, '\n')}
+          </Text>
+
+          <View style={[styles.divider, { backgroundColor: colors.border }]} />
+
+          {/* БЛОК ЛОКАЛЬНЫХ ЗАМЕТОК СТУДЕНТА */}
+          <View style={[styles.notesSection, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={styles.notesHeader}>
+              <Ionicons name="create-outline" size={20} color={colors.primary} />
+              <Text style={[styles.notesTitle, { color: colors.textPrimary }]}>Мои личные заметки</Text>
+            </View>
+            <TextInput
+              style={[styles.notesInput, { color: colors.textPrimary, borderColor: colors.border }]}
+              placeholder="Запишите сюда важные формулы, мысли или шпаргалки к этой лекции..."
+              placeholderTextColor={colors.textMuted}
+              multiline
+              value={noteText}
+              onChangeText={setNoteText}
+            />
+            <TouchableOpacity 
+              style={[styles.saveNoteBtn, { backgroundColor: colors.primary }]}
+              onPress={handleSaveNote}
+              disabled={isSavingNote}
+            >
+              <Text style={styles.saveNoteBtnText}>
+                {isSavingNote ? 'Сохранение...' : 'Сохранить заметку'}
+              </Text>
+            </TouchableOpacity>
           </View>
+        </ScrollView>
+
+        {/* НИЖНЯЯ ПАНЕЛЬ С КНОПКОЙ ТЕСТА */}
+        <View style={[styles.footer, { backgroundColor: colors.background }]}>
+          {isCompleted ? (
+            <View style={[styles.completedBadge, { backgroundColor: '#2ECC7115', borderColor: '#2ECC7140' }]}>
+              <Ionicons name="checkmark-circle" size={20} color="#2ECC71" style={{ marginRight: 8 }} />
+              <Text style={{ color: '#2ECC71', fontWeight: 'bold', fontSize: 15 }}>Тема успешно пройдена!</Text>
+            </View>
+          ) : (
+            <TouchableOpacity 
+              style={[styles.quizBtn, { backgroundColor: colors.primary }]}
+              activeOpacity={0.8}
+              onPress={handleStartQuiz}
+            >
+              <Text style={styles.quizBtnText}>Проверить знания (Тест)</Text>
+              <Ionicons name="arrow-forward" size={18} color="#FFF" style={{ marginLeft: 8 }} />
+            </TouchableOpacity>
+          )}
         </View>
-      </Modal>
-      <ConfettiCannon ref={conf} count={60} origin={{x: width/2, y: -20}} autoStart={false} />
-    </View>
+      </SafeAreaView>
+    </KeyboardAvoidingView>
   );
 };
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20, paddingBottom: 15, alignItems: 'center' },
-  headerRight: { flexDirection: 'row', gap: 15 },
-  iconBtn: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' },
-  scroll: { paddingHorizontal: 25, paddingBottom: 60 },
-  mainTitle: { fontSize: 30, fontWeight: 'bold', marginTop: 10 },
-  accentLine: { height: 5, width: 50, borderRadius: 3, marginVertical: 20 },
-  contentBody: { marginTop: 5 },
-  paragraph: { fontSize: 17, lineHeight: 28, marginBottom: 20, letterSpacing: 0.2 },
-  h3: { fontSize: 22, fontWeight: 'bold', marginTop: 10, marginBottom: 15 },
-  imageWrapper: { marginVertical: 20, borderRadius: 20, overflow: 'hidden', elevation: 3 },
-  lectureImage: { width: '100%', height: 250 },
-  imageCaption: { fontSize: 12, textAlign: 'center', paddingVertical: 8, fontStyle: 'italic' },
-  formulaCard: { padding: 20, borderRadius: 20, borderWidth: 2, borderStyle: 'dashed', marginVertical: 20, alignItems: 'center' },
-  formulaText: { fontSize: 20, fontWeight: 'bold', fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace' },
-  importantCard: { padding: 20, borderRadius: 20, borderLeftWidth: 5, borderLeftColor: '#E53E3E', marginVertical: 20 },
-  importantHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 },
-  importantLabel: { fontSize: 10, fontWeight: 'bold', color: '#E53E3E', letterSpacing: 1 },
-  importantText: { fontSize: 16, fontWeight: '600', fontStyle: 'italic' },
-  finishBtn: { height: 65, borderRadius: 22, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 12, marginTop: 40, elevation: 4 },
-  finishBtnText: { color: '#FFF', fontSize: 18, fontWeight: 'bold' },
-  ratingBox: { marginTop: 40, alignItems: 'center', paddingVertical: 30, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.05)' },
-  rateLabel: { fontSize: 10, fontWeight: 'bold', letterSpacing: 2, marginBottom: 15 },
-  stars: { flexDirection: 'row', gap: 10 },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: 25 },
-  modalBox: { padding: 25, borderRadius: 30, elevation: 10 },
-  modalT: { fontSize: 20, fontWeight: 'bold', marginBottom: 20 },
-  modalInput: { height: 150, borderWidth: 1.5, borderRadius: 15, padding: 15, textAlignVertical: 'top', fontSize: 16, marginBottom: 20 },
-  modalActions: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 20 },
-  saveBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 12 },
-  saveBtnText: { color: '#FFF', fontWeight: 'bold' }
-});
-
-export default ContentScreen;
-
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 15 },
+  headerTitle: { fontSize: 16, fontWeight: 'bold', flex: 1, textAlign: 'center', marginHorizontal: 10 },
+  backBtn: { width: 45, height: 45, borderRadius: 15, justifyContent: 'center', alignItems: 'center', borderWidth: 1, elevation: 2 },
+  scrollContent: { paddingHorizontal: 20, paddingBottom: 120, paddingTop: 10 },
+  descBox: { padding: 15, borderRadius: 16, borderWidth: 1, marginBottom: 20, borderStyle: 'dashed' },
+  descText: { fontSize: 13, lineHeight: 18, fontWeight: '500' },
+  lectureText: { fontSize: 16, lineHeight: 26, fontWeight: '500' },
+  divider: { height: 1, marginVertical: 25, width: '100%' },
+  notesSection: { padding: 20, borderRadius: 24, borderWidth: 1, marginBottom: 20 },
+  notesHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+  notesTitle: { fontSize: 15, fontWeight: 'bold', marginLeft: 8 },
+  notesInput: { minHeight: 80, borderRadius: 12, borderWidth: 1, padding: 12, fontSize: 14, textAlignVertical: 'top', marginBottom: 12 },
+  saveNoteBtn: { height: 44, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  saveNoteBtnText: { color: '#FFF', fontWeight: 'bold', fontSize: 14 },
+  footer: { padding: 20, position: 'absolute', bottom: 0, width: '100%' },
+  quizBtn: { height: 58, borderRadius: 20, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', width: '100%', elevation: 3 },
+  quizBtnText: { color: '#FFF', fontSize: 16, fontWeight: 'bold' },
+  completedBadge: { height: 58, borderRadius: 20, borderWidth: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', width: '100%' }, center: { flex: 1, justifyContent: 'center', alignItems: 'center' }
+}); export default ContentScreen;

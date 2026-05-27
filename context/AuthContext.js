@@ -123,7 +123,7 @@ export const AuthProvider = ({ children }) => {
           const res = await apiClient.get('/api/profile').catch(() => null);
 
           if (res?.data?.success && res.data.user && res.data.user.length > 0) {
-            const fetchedUser = res.data.user;
+            const fetchedUser = res.data.user[0];
             setUser(fetchedUser);
             setIsLoggedIn(true);
             setStreak(fetchedUser.streak_count || 0);
@@ -151,28 +151,52 @@ export const AuthProvider = ({ children }) => {
   }, [syncProgress, syncGlossary, syncTopics]);
 
 
-const login = async (email, password) => {
-  try {
-    const response = await apiClient.post('/api/login', { email, password });
-    if (response.data.success) {
-      const { token, user: userData } = response.data;
-      await SecureStore.setItemAsync('user_token', token);
-      await AsyncStorage.setItem('current_user', userData.username);
-      setUser(userData);
-      setIsLoggedIn(true);
-      setStreak(userData.streak_count || 0);
+  const login = async (email, password) => {
+    try {
+      console.log('?? [AuthContext] Запрос авторизации на сервер...');
+      const response = await apiClient.post('/api/login', { email, password });
       
-      // ?? ВОТ ЗДЕСЬ КРАШИТСЯ:
-      await syncProgress(userData.username);
-      await syncGlossary();
-      
-      return { success: true };
+      if (response.data.success) {
+        const { token, user: userData } = response.data;
+        
+        // Сохраняем сессию на устройстве
+        await SecureStore.setItemAsync('user_token', token);
+        await AsyncStorage.setItem('current_user', userData.username);
+        
+        // Прописываем токен по умолчанию в Axios для фоновой синхронизации
+        apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+        
+        // Кэшируем профиль в SQLite для оффлайн-режима и лидерборда
+        try {
+          db.runSync(
+            'INSERT OR REPLACE INTO users (email, username, password, role, balance, streak_count) VALUES (?, ?, ?, ?, ?, ?);',
+            [email.toLowerCase().trim(), userData.username, 'auth_session', userData.role || 'student', userData.balance || 0, userData.streak_count || 0]
+          );
+        } catch (sqliteErr) {
+          console.log('?? [SQLite Cache Error]:', sqliteErr.message);
+        }
+
+        // Обновляем глобальные стейты (Вход выполнен!)
+        setUser(userData);
+        setIsLoggedIn(true);
+        setStreak(userData.streak_count || 0);
+        
+        // Запускаем фоновое обновление контента
+        syncProgress(userData.username);
+        syncGlossary();
+        syncTopics();
+        
+        return { success: true };
+      }
+    } catch (error) {
+      console.log('? Ошибка метода login:', error.message);
+      return { 
+        success: false, 
+        error: error.response?.data?.error || 'Неверный email или пароль.' 
+      };
     }
-  } catch (error) {
-    // Если произошел краш в блоке выше, ошибка улетает сюда и возвращает дефолтный текст:
-    return { success: false, error: error.response?.data?.error || 'Неверный логин или пароль' };
-  }
-};
+  };
+
 
 
   const register = async (email, username, password) => {
