@@ -21,12 +21,15 @@ const TopicSelectionScreen = ({ route, navigation }) => {
   useEffect(() => {
     const loadTopics = () => {
       try {
-        // 💡 ИСПРАВЛЕНО: Запрашиваем только реально существующие колонки в SQLite
         const rows = db.getAllSync(
           'SELECT id, title, description, subject_key FROM topics WHERE subject_key = ? ORDER BY id ASC',
           [subject.subject_key]
         );
         setTopics(rows || []);
+
+        // 🎯 ВСТАВЬ ЭТОТ ЛОГ СЮДА:
+        console.log('📱 [DEBUG] completedCourses в стейте сейчас:', completedCourses);
+
       } catch (e) {
         console.log('❌ Ошибка получения списка тем из SQLite:', e.message);
       } finally {
@@ -35,6 +38,7 @@ const TopicSelectionScreen = ({ route, navigation }) => {
     };
     loadTopics();
   }, [subject.subject_key, completedCourses]);
+
 
   const handleTopicPress = (item) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -87,10 +91,14 @@ const TopicSelectionScreen = ({ route, navigation }) => {
           </View>
         ) : (
           topics.map((item, index) => {
+            // 💡 ИСПРАВЛЕНО: Собираем оба формата ключей для надежной проверки
+            const defaultKey = `topic_${item.id}`;
+            const subjectKey = `${item.subject_key}_${item.id}`;
 
-            const topicKey = `topic_${item.id}`;
-
-            const isCompleted = completedCourses?.includes(topicKey) || false;
+            // Галочка загорится, если в массиве есть ХОТЯ БЫ ОДИН из этих вариантов!
+            const isCompleted = completedCourses?.includes(defaultKey) ||
+              completedCourses?.includes(subjectKey) ||
+              false;
 
             return (
               <TouchableOpacity
@@ -141,7 +149,6 @@ const TopicSelectionScreen = ({ route, navigation }) => {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 15 },
   headerTitle: { fontSize: 18, fontWeight: 'bold', flex: 1, textAlign: 'center' },
   backBtn: { width: 45, height: 45, borderRadius: 15, justifyContent: 'center', alignItems: 'center', borderWidth: 1 },
@@ -154,9 +161,7 @@ const styles = StyleSheet.create({
   titleContainer: { flex: 1, paddingRight: 10 },
   topicTitle: { fontSize: 16, fontWeight: 'bold', marginBottom: 4 },
   topicDesc: { fontSize: 12, lineHeight: 16 },
-  statusBox: { width: 32, height: 32, borderRadius: 11, justifyContent: 'center', alignItems: 'center' },
-  emptyContainer: { alignItems: 'center', marginTop: 60 },
-  emptyText: { marginTop: 12, fontSize: 14, textAlign: 'center' }
+  statusBox: { width: 32, height: 32, borderRadius: 11, justifyContent: 'center', alignItems: 'center' }
 });
 
 export default TopicSelectionScreen;

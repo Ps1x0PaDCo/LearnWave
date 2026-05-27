@@ -16,8 +16,8 @@ export const AuthProvider = ({ children }) => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [streak, setStreak] = useState(0);
-  const [completedCourses, setCompletedCourses] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [completedCourses, setCompletedCourses] = useState([]);
 
   // Состояния для всплывающего Pop-up уведомления достижений
   const [achievementModal, setAchievementModal] = useState(false);
@@ -50,23 +50,23 @@ export const AuthProvider = ({ children }) => {
     try {
       console.log('📡 [Sync] Starting progress synchronization with PostgreSQL...');
       const res = await apiClient.get('/api/progress');
-      
+
       if (res.data.success) {
         const cloudCompleted = res.data.completed || []; // Массив ID с сервера (например [1, 2])
-        
+
         // 💡 ИСПРАВЛЕНО: Форматируем прилетающие ID с сервера в строки 'topic_1'
         const formattedKeys = cloudCompleted.map(id => typeof id === 'object' ? `topic_${id.topic_id}` : `topic_${id}`);
-        
+
         // Записываем отформатированные текстовые ключи в локальную базу SQLite
         formattedKeys.forEach(topicKey => dbService.completeTopic(nickname, topicKey));
-        
+
         // Клади в стейт правильные строки, чтобы экран их распознал!
         setCompletedCourses(formattedKeys);
         console.log('✅ [Sync] Databases synced successfully (PostgreSQL -> SQLite).');
       }
     } catch (e) {
       console.log("⚠️ [Sync] Offline mode activated. Loading local progress from SQLite.");
-      
+
       // 💡 ИСПРАВЛЕНО: Прямой и безопасный запрос в SQLite, если сервер недоступен
       try {
         const done = db.getAllSync(
@@ -299,35 +299,48 @@ export const AuthProvider = ({ children }) => {
   };
 
 
-  // --- НАЧАЛО ПРАВКИ 3 (НАЧИСЛЕНИЕ МОНЕТ НА КЛИЕНТЕ) ---
-  const completeTopic = (u, t, id) => {
-    dbService.completeTopic(u, t);
+  // --- НАЧАЛО ИСПРАВЛЕННОГО БЛОКА НАЧИСЛЕНИЯ И СИНХРОНИЗАЦИИ ---
+  const completeTopic = (username, topicKey, topicId) => {
+    // Гарантируем, что ключ темы — это строка формата topic_ID
+    const finalKey = topicKey || `topic_${topicId}`;
 
-    // Отправляем прогресс на сервер и сразу забираем награду в стейт
-    apiClient.post('/api/progress', { topic_id: id })
+    // Записываем прогресс в локальную базу SQLite
+    dbService.completeTopic(username, finalKey);
+
+    // Отправляем прогресс на сервер PostgreSQL и забираем монеты
+    apiClient.post('/api/progress', { topic_id: topicId })
       .then((res) => {
         if (res.data.success && res.data.reward) {
-          // Обновляем баланс в оперативной памяти приложения без перезагрузки
+          // Обновляем баланс монет в оперативной памяти приложения
           setUser(prev => prev ? { ...prev, balance: (prev.balance || 0) + res.data.reward } : null);
         }
       })
-      .catch((e) => console.log('Ошибка отправки прогресса на бэкенд:', e.message));
+      .catch((e) => console.log('❌ Ошибка отправки прогресса на бэкенд:', e.message));
 
+    // Обновляем стейт выполненных курсов, чтобы галочки загорелись мгновенно
     setCompletedCourses(prev => {
-      const updated = [...new Set([...prev, t])];
+      // Защита от undefined и дубликатов: собираем чистый массив строк
+      const currentList = Array.isArray(prev) ? prev : [];
+      const updated = [...new Set([...currentList, finalKey])];
+
+      // Считаем XP и проверяем триггеры глобальных достижений
       const currentXP = (user?.balance || 0) + 50;
       const award = checkAchievementTriggers(updated.length, streak, currentXP);
 
-      if (award) triggerAchievementPopUp(award);
+      if (award) {
+        triggerAchievementPopUp(award);
+      }
       return updated;
     });
   };
+  // --- КОНЕЦ ИСПРАВЛЕННОГО БЛОКА ---
+
 
   return (
     <AuthContext.Provider value={{
       user, isLoggedIn, isDarkMode, streak, isLoading,
       nickname: user?.username, userRole: user?.role,
-      login, register, logout, deleteUserAccount,
+      login, register, logout, deleteUserAccount, completedCourses, setCompletedCourses,
       toggleTheme: async () => {
         const n = !isDarkMode; setIsDarkMode(n);
         await AsyncStorage.setItem('user_theme', n ? 'dark' : 'light');
@@ -357,7 +370,7 @@ export const AuthProvider = ({ children }) => {
                   setAchievementModal(false);
                 }}
               >
-                <Text style={popupStyles.btnText}>Отлично ??</Text>
+                <Text style={popupStyles.btnText}>Отлично</Text>
               </TouchableOpacity>
             </Animated.View>
           </View>
