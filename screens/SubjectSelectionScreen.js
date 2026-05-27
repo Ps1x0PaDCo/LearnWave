@@ -1,17 +1,16 @@
 import React, { useContext, useState, useEffect, useRef } from 'react';
-import { 
-  View, Text, TouchableOpacity, StyleSheet, ScrollView, 
-  Animated, StatusBar, ActivityIndicator 
+import {
+  View, Text, TouchableOpacity, StyleSheet, ScrollView,
+  Animated, StatusBar, ActivityIndicator
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { AuthContext } from '../context/AuthContext'; 
+import { AuthContext } from '../context/AuthContext';
 import { getThemeColors } from '../styles/colors';
-import { db } from '../services/db'; 
+import { db } from '../services/db';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Haptics from 'expo-haptics';
 
 const SubjectSelectionScreen = ({ route, navigation }) => {
-  // 💡 ИСПРАВЛЕНО: Принимаем subjectName, переданный из каталога курсов
   const { subjectKey, subjectName } = route.params || { subjectKey: 'math', subjectName: 'Курс' };
   const { isDarkMode } = useContext(AuthContext);
   const colors = getThemeColors(isDarkMode);
@@ -30,25 +29,25 @@ const SubjectSelectionScreen = ({ route, navigation }) => {
     'web_dev': 'globe-outline',
   };
 
-  const current = { 
+  const current = {
     title: subjectName || 'Выбор темы', // Больше никаких "math" в заголовке!
-    desc: `Изучение основ направления и практические задания`, 
-    icon: iconMap[subjectKey] || 'school-outline', 
-    color: colors.primary 
+    desc: `Изучение основ направления и практические задания`,
+    icon: iconMap[subjectKey] || 'school-outline',
+    color: colors.primary
   };
 
   useEffect(() => {
     // Анимация «всплытия» карточки
     Animated.spring(scaleAnim, { toValue: 1, friction: 4, useNativeDriver: true }).start();
-    
+
     const fetchStats = () => {
       try {
         // Запрос к локальной SQLite для подсчета тем по ключу предмета
         const result = db.getFirstSync('SELECT COUNT(*) as count FROM topics WHERE subject_key = ?', [subjectKey]);
         setTopicCount(result?.count || 0);
-      } catch (e) { 
+      } catch (e) {
         console.log('❌ Ошибка SQLite при подсчете тем:', e.message);
-        setTopicCount(0); 
+        setTopicCount(0);
       } finally {
         setLoading(false);
       }
@@ -58,61 +57,61 @@ const SubjectSelectionScreen = ({ route, navigation }) => {
 
   const handleOpenTopics = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    navigation.navigate('TopicSelection', { 
-      subject: { subject_key: subjectKey, title: current.title } 
+    navigation.navigate('TopicSelection', {
+      subject: { subject_key: subjectKey, title: current.title }
     });
   };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>
       <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
-      
+
       {/* HEADER */}
       <View style={styles.header}>
-          <TouchableOpacity 
-            style={[styles.backBtn, { backgroundColor: colors.surface, borderColor: colors.border }]} 
-            onPress={() => navigation.goBack()}
-          >
-            <Ionicons name="chevron-back" size={24} color={colors.textPrimary} />
-          </TouchableOpacity>
-          {/* 💡 ТЕПЕРЬ ТУТ ВСЕГДА КРАСИВОЕ РУССКОЕ НАЗВАНИЕ КУРСА */}
-          <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>{current.title}</Text>
-          <View style={{ width: 45 }} /> 
+        <TouchableOpacity
+          style={[styles.backBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
+          onPress={() => navigation.goBack()}
+        >
+          <Ionicons name="chevron-back" size={24} color={colors.textPrimary} />
+        </TouchableOpacity>
+        {/* 💡 ТЕПЕРЬ ТУТ ВСЕГДА КРАСИВОЕ РУССКОЕ НАЗВАНИЕ КУРСА */}
+        <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>{current.title}</Text>
+        <View style={{ width: 45 }} />
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-          <View style={[styles.mainCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Animated.View style={[styles.iconCircle, { backgroundColor: current.color + '15', transform: [{ scale: scaleAnim }] }]}>
-              <Ionicons name={current.icon} size={70} color={current.color} />
-            </Animated.View>
-            
-            <Text style={[styles.subjectLabel, { color: current.color }]}>ОБУЧЕНИЕ ДОСТУПНО</Text>
-            <Text style={[styles.cardDesc, { color: colors.textPrimary }]}>{current.desc}</Text>
-            
-            <View style={[styles.infoBadge, { backgroundColor: colors.background }]}>
-              {loading ? (
-                <ActivityIndicator size="small" color={colors.primary} />
-              ) : (
-                <>
-                  <Ionicons name="layers-outline" size={16} color={colors.textMuted} />
-                  <Text style={[styles.infoBadgeText, { color: colors.textMuted }]}>
-                     В архиве: {topicCount} тем
-                  </Text>
-                </>
-              )}
-            </View>
-          </View>
+        <View style={[styles.mainCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Animated.View style={[styles.iconCircle, { backgroundColor: current.color + '15', transform: [{ scale: scaleAnim }] }]}>
+            <Ionicons name={current.icon} size={70} color={current.color} />
+          </Animated.View>
 
-          <TouchableOpacity 
-            style={[styles.primaryButton, { backgroundColor: current.color }]}
-            activeOpacity={0.8}
-            onPress={handleOpenTopics}
-          >
-            <Text style={styles.buttonText}>Начать изучение</Text>
-            <View style={styles.btnIconCircle}>
-               <Ionicons name="arrow-forward" size={18} color={current.color} />
-            </View>
-          </TouchableOpacity>
+          <Text style={[styles.subjectLabel, { color: current.color }]}>ОБУЧЕНИЕ ДОСТУПНО</Text>
+          <Text style={[styles.cardDesc, { color: colors.textPrimary }]}>{current.desc}</Text>
+
+          <View style={[styles.infoBadge, { backgroundColor: colors.background }]}>
+            {loading ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <>
+                <Ionicons name="layers-outline" size={16} color={colors.textMuted} />
+                <Text style={[styles.infoBadgeText, { color: colors.textMuted }]}>
+                  В архиве: {topicCount} тем
+                </Text>
+              </>
+            )}
+          </View>
+        </View>
+
+        <TouchableOpacity
+          style={[styles.primaryButton, { backgroundColor: current.color }]}
+          activeOpacity={0.8}
+          onPress={handleOpenTopics}
+        >
+          <Text style={styles.buttonText}>Начать изучение</Text>
+          <View style={styles.btnIconCircle}>
+            <Ionicons name="arrow-forward" size={18} color={current.color} />
+          </View>
+        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );

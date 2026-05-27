@@ -9,20 +9,20 @@ import { getThemeColors } from '../styles/colors';
 import { db } from '../services/db';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Haptics from 'expo-haptics';
-import apiClient from '../services/api'; // Импортируем для списания монет
+import apiClient from '../services/api';
 
 const QuizScreen = ({ route, navigation }) => {
-  const { topicId, topicTitle } = route.params || { topicId: 1, topicTitle: 'Тест' };
+  const { topicId, topicTitle, topicKey } = route.params || { topicId: 1, topicTitle: 'Тест', topicKey: 'topic_1' };
   const { isDarkMode, completeTopic, user, setUser } = useContext(AuthContext);
   const colors = getThemeColors(isDarkMode);
 
   const [loading, setLoading] = useState(true);
   const [quizData, setQuizData] = useState(null);
-  const [visibleOptions, setVisibleOptions] = useState([]); // Опции, которые видит юзер (для 50/50)
+  const [visibleOptions, setVisibleOptions] = useState([]);
   const [selectedOption, setSelectedOption] = useState(null);
   const [isAnswered, setIsAnswered] = useState(false);
   const [isCorrect, setIsCorrect] = useState(false);
-  const [hintUsed, setHintUsed] = useState(false); // Использована ли подсказка в этом раунде
+  const [hintUsed, setHintUsed] = useState(false);
 
   useEffect(() => {
     const loadQuiz = () => {
@@ -31,7 +31,7 @@ const QuizScreen = ({ route, navigation }) => {
         if (row?.quiz_question) {
           const parsed = JSON.parse(row.quiz_question);
           setQuizData(parsed);
-          setVisibleOptions(parsed.options); // Изначально видны все варианты
+          setVisibleOptions(parsed.options);
         } else {
           const defaultQuiz = {
             question: `Вы изучили тему "${topicTitle}". Подтвердите, что материал усвоен!`,
@@ -48,7 +48,7 @@ const QuizScreen = ({ route, navigation }) => {
       }
     };
     loadQuiz();
-  }, [topicId]);
+  }, [topicId, topicTitle]);
 
   const handleOptionPress = (option) => {
     if (isAnswered) return;
@@ -60,7 +60,14 @@ const QuizScreen = ({ route, navigation }) => {
   const useHint5050 = async () => {
     if (hintUsed || isAnswered) return;
 
-    const hintPrice = 30; // Стоимость подсказки в монетах
+    // Защита: не даем тратить монеты впустую, если вариантов и так мало
+    if (!quizData || quizData.options.length <= 2) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      Alert.alert('Подсказка недоступна 💡', 'В этом вопросе слишком мало вариантов ответа, подсказка не требуется.');
+      return;
+    }
+
+    const hintPrice = 30;
     if ((user?.balance || 0) < hintPrice) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert('Недостаточно монет 🪙', 'У вас не хватает монет для покупки подсказки.');
@@ -70,7 +77,6 @@ const QuizScreen = ({ route, navigation }) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     try {
-      // Списываем монеты через созданный нами ранее эндпоинт магазина
       const res = await apiClient.post('/api/shop/buy', {
         item_type: 'quiz_hint',
         item_value: 'used_in_quiz',
@@ -78,17 +84,15 @@ const QuizScreen = ({ route, navigation }) => {
       });
 
       if (res.data.success) {
-        // Обновляем баланс монет на клиенте
         setUser(prev => prev ? { ...prev, balance: res.data.newBalance } : null);
 
-        // Логика 50/50: оставляем правильный ответ + 1 случайный неверный
         const correctAnswer = quizData.correct;
         const incorrectAnswers = quizData.options.filter(opt => opt !== correctAnswer);
 
         // Выбираем один случайный неверный ответ
         const randomIncorrect = incorrectAnswers[Math.floor(Math.random() * incorrectAnswers.length)];
 
-        // Перемешиваем их, чтобы правильный не всегда был первым
+        // Перемешиваем их, чтобы правильный ответ не всегда стоял на первом месте
         const newOptions = [correctAnswer, randomIncorrect].sort(() => Math.random() - 0.5);
 
         setVisibleOptions(newOptions);
@@ -109,7 +113,9 @@ const QuizScreen = ({ route, navigation }) => {
 
     if (correct) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      completeTopic(user?.username, topicId, topicId);
+      // Исправлено: передаем никнейм, строковый ключ для SQLite и числовой ID для Postgres
+      const finalKey = route.params?.topicKey || `topic_${topicId}`;
+      completeTopic(user?.username, finalKey, topicId);
     } else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     }
@@ -124,7 +130,7 @@ const QuizScreen = ({ route, navigation }) => {
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top', 'bottom']}>
       <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
 
       {/* HEADER */}
@@ -137,90 +143,81 @@ const QuizScreen = ({ route, navigation }) => {
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Проверка знаний</Text>
 
-        {/* КНОПКА ПОДСКАЗКИ (Отображается, только если вариантов больше 2 и ответ еще не дан) */}
-        {quizData?.options.length > 2 && !isAnswered ? (
-          <TouchableOpacity
-            style={[
-              styles.hintBtn,
-              { backgroundColor: hintUsed ? colors.border : '#F1C40F20', borderColor: '#F1C40F50' }
-            ]}
-            disabled={hintUsed}
-            onPress={useHint5050}
-          >
-            <Ionicons name="wand-outline" size={18} color={hintUsed ? colors.textMuted : '#F1C40F'} />
-            <Text style={[styles.hintBtnText, { color: hintUsed ? colors.textMuted : '#F1C40F' }]}>50/50 (-30🪙)</Text>
-          </TouchableOpacity>
-        ) : (
-          <View style={{ width: 45 }} />
-        )}
+        {/* Кнопка 50/50 */}
+        <TouchableOpacity
+          style={[styles.hintBtn, {
+            backgroundColor: hintUsed ? colors.border : colors.primary + '15',
+            opacity: hintUsed || isAnswered ? 0.6 : 1
+          }]}
+          onPress={useHint5050}
+          disabled={hintUsed || isAnswered}
+        >
+          <Text style={[styles.hintText, { color: hintUsed ? colors.textMuted : colors.primary }]}>50/50 🪙30</Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.content}>
+        {/* QUESTION BOX */}
         <View style={[styles.questionCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Text style={[styles.questionText, { color: colors.textPrimary }]}>
-            {quizData?.question}
-          </Text>
+          <Text style={[styles.questionText, { color: colors.textPrimary }]}>{quizData?.question}</Text>
         </View>
 
-        {/* ВАРИАНТЫ ОТВЕТОВ (Рендерим только visibleOptions) */}
+        {/* OPTIONS LIST */}
         <View style={styles.optionsContainer}>
-          {visibleOptions.map((option, idx) => {
+          {visibleOptions.map((option, index) => {
             const isSelected = selectedOption === option;
-            let buttonBg = colors.surface;
-            let borderCol = colors.border;
+            let btnStyle = { backgroundColor: colors.surface, borderColor: colors.border };
+            let textStyle = { color: colors.textPrimary };
+
+            if (isSelected) {
+              btnStyle.borderColor = colors.primary;
+              btnStyle.backgroundColor = colors.primary + '10';
+            }
 
             if (isAnswered) {
               if (option === quizData.correct) {
-                buttonBg = '#2ECC7120';
-                borderCol = '#2ECC71';
+                btnStyle.borderColor = '#2ECC71';
+                btnStyle.backgroundColor = '#2ECC7120';
+                textStyle.color = '#2ECC71';
               } else if (isSelected && !isCorrect) {
-                buttonBg = '#E74C3C20';
-                borderCol = '#E74C3C';
+                btnStyle.borderColor = '#E74C3C';
+                btnStyle.backgroundColor = '#E74C3C20';
+                textStyle.color = '#E74C3C';
               }
-            } else if (isSelected) {
-              buttonBg = colors.primary + '15';
-              borderCol = colors.primary;
             }
 
             return (
               <TouchableOpacity
-                key={idx}
-                style={[styles.optionCard, { backgroundColor: buttonBg, borderColor: borderCol }]}
+                key={index}
+                style={[styles.optionButton, btnStyle]}
                 onPress={() => handleOptionPress(option)}
-                activeOpacity={0.8}
+                disabled={isAnswered}
+                activeOpacity={0.7}
               >
-                <Text style={[styles.optionText, { color: colors.textPrimary }]}>{option}</Text>
+                <Text style={[styles.optionText, textStyle]}>{option}</Text>
                 {isAnswered && option === quizData.correct && (
-                  <Ionicons name="checkmark-circle" size={20} color="#2ECC71" />
+                  <Ionicons name="checkmark-circle" size={22} color="#2ECC71" />
+                )}
+                {isAnswered && isSelected && !isCorrect && (
+                  <Ionicons name="close-circle" size={22} color="#E74C3C" />
                 )}
               </TouchableOpacity>
             );
           })}
         </View>
 
-        <View style={styles.footer}>
-          {!isAnswered ? (
-            <TouchableOpacity
-              style={[
-                styles.actionBtn,
-                { backgroundColor: selectedOption ? colors.primary : colors.textMuted }
-              ]}
-              disabled={!selectedOption}
-              onPress={checkAnswer}
-            >
-              <Text style={styles.actionBtnText}>Проверить ответ</Text>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity
-              style={[styles.actionBtn, { backgroundColor: '#2ECC71' }]}
-              onPress={() => navigation.goBack()}
-            >
-              <Text style={styles.actionBtnText}>
-                {isCorrect ? 'Завершить (+50 🪙)' : 'Вернуться к лекции'}
-              </Text>
-            </TouchableOpacity>
-          )}
-        </View>
+        {/* ACTION BUTTON */}
+        <TouchableOpacity
+          style={[styles.actionButton, {
+            backgroundColor: !selectedOption ? colors.border : isAnswered ? '#2ECC71' : colors.primary
+          }]}
+          onPress={isAnswered ? () => navigation.goBack() : checkAnswer}
+          disabled={!selectedOption}
+        >
+          <Text style={styles.actionButtonText}>
+            {isAnswered ? 'Завершить (+50 XP)' : 'Проверить ответ'}
+          </Text>
+        </TouchableOpacity>
       </View>
     </SafeAreaView>
   );
@@ -228,18 +225,20 @@ const QuizScreen = ({ route, navigation }) => {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 15 },
   headerTitle: { fontSize: 18, fontWeight: 'bold' },
   backBtn: { width: 45, height: 45, borderRadius: 15, justifyContent: 'center', alignItems: 'center', borderWidth: 1 },
-  hintBtn: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 14, borderWidth: 1 },
-  hintBtnText: { fontSize: 12, fontWeight: 'bold', marginLeft: 4 },
+  hintBtn: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12 },
+  hintText: { fontSize: 13, fontWeight: '700' },
   content: { flex: 1, paddingHorizontal: 20, justifyContent: 'space-between', paddingBottom: 20 },
-  questionCard: { padding: 30, borderRadius: 28, borderWidth: 1, marginTop: 10, elevation: 2 },
-  questionText: { fontSize: 20, fontWeight: 'bold', textAlign: 'center', lineHeight: 28 },
+  questionCard: { padding: 24, borderRadius: 24, borderWidth: 1, marginTop: 10, minHeight: 140, justifyContent: 'center' },
+  questionText: { fontSize: 18, fontWeight: '600', textAlign: 'center', lineHeight: 26 },
   optionsContainer: { marginTop: 20, flex: 1, justifyContent: 'center' },
-  optionCard: { padding: 20, borderRadius: 20, borderWidth: 1, marginBottom: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', elevation: 1 },
-  optionText: { fontSize: 16, fontWeight: '600', flex: 1 },
-  footer: { marginBottom: 10 },
-  actionBtn: { height: 58, borderRadius: 20, justifyContent: 'center', alignItems: 'center', width: '100%' },
-  actionBtnText: { color: '#FFF', fontSize: 16, fontWeight: 'bold' }, center: { flex: 1, justifyContent: 'center', alignItems: 'center' }
-}); export default QuizScreen;
+  optionButton: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 18, borderRadius: 20, borderWidth: 1, marginBottom: 14 },
+  optionText: { fontSize: 16, fontWeight: '500', flex: 1, paddingRight: 10 },
+  actionButton: { height: 56, borderRadius: 20, justifyContent: 'center', alignItems: 'center', width: '100%', marginTop: 10 },
+  actionButtonText: { color: '#FFF', fontSize: 16, fontWeight: 'bold' }
+});
+
+export default QuizScreen;
