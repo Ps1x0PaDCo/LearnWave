@@ -109,7 +109,7 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
 
-  // 2. Внутри useEffect (в самом конце метода init(), перед строкой init();) замени старый global на этот код:
+
   useEffect(() => {
     async function init() {
       try {
@@ -130,6 +130,16 @@ export const AuthProvider = ({ children }) => {
             setIsLoggedIn(true);
             setStreak(fetchedUser.streak_count || 0);
             await syncProgress(fetchedUser.username);
+            try {
+              const done = db.getAllSync(
+                "SELECT topic_key FROM user_progress WHERE username = ? AND status = 'completed'",
+                [fetchedUser.username]
+              );
+              setCompletedCourses(done.map(row => row.topic_key));
+            } catch (err) {
+              console.log('❌ Ошибка загрузки галочек при старте:', err.message);
+            }
+
           } else {
             await SecureStore.deleteItemAsync('user_token');
           }
@@ -157,17 +167,17 @@ export const AuthProvider = ({ children }) => {
     try {
       console.log('📡 [AuthContext] Запрос авторизации на сервер...');
       const response = await apiClient.post('/api/login', { email, password });
-      
+
       if (response.data.success) {
         const { token, user: userData } = response.data;
-        
+
         // Сохраняем сессию на устройстве
         await SecureStore.setItemAsync('user_token', token);
         await AsyncStorage.setItem('current_user', userData.username);
-        
+
         // Прописываем токен по умолчанию в Axios для фоновой синхронизации
         apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-        
+
         // Кэшируем профиль в SQLite для оффлайн-режима и лидерборда
         try {
           db.runSync(
@@ -182,19 +192,28 @@ export const AuthProvider = ({ children }) => {
         setUser(userData);
         setIsLoggedIn(true);
         setStreak(userData.streak_count || 0);
-        
+        try {
+          const done = db.getAllSync(
+            "SELECT topic_key FROM user_progress WHERE username = ? AND status = 'completed'",
+            [userData.username]
+          );
+          setCompletedCourses(done.map(row => row.topic_key));
+        } catch (err) {
+          console.log('❌ Ошибка загрузки галочек при логине:', err.message);
+        }
+
         // Запускаем фоновое обновление контента
         syncProgress(userData.username);
         syncGlossary();
         syncTopics();
-        
+
         return { success: true };
       }
     } catch (error) {
       console.log('❌ Ошибка метода login:', error.message);
-      return { 
-        success: false, 
-        error: error.response?.data?.error || 'Неверный email или пароль.' 
+      return {
+        success: false,
+        error: error.response?.data?.error || 'Неверный email или пароль.'
       };
     }
   };
