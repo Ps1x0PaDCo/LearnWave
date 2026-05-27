@@ -19,19 +19,21 @@ export const AuthProvider = ({ children }) => {
   const [completedCourses, setCompletedCourses] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Состояния для всплывающего Pop-up уведомления достижений
+  // РЎРѕСЃС‚РѕСЏРЅРёСЏ РґР»СЏ РІСЃРїР»С‹РІР°СЋС‰РµРіРѕ Pop-up СѓРІРµРґРѕРјР»РµРЅРёСЏ РґРѕСЃС‚РёР¶РµРЅРёР№
   const [achievementModal, setAchievementModal] = useState(false);
   const [unlockedAward, setUnlockedAward] = useState(null);
   const scaleAnim = useRef(new Animated.Value(0)).current;
 
-  // Краткий справочник условий для триггера всплывающего окна
+  // РљСЂР°С‚РєРёР№ СЃРїСЂР°РІРѕС‡РЅРёРє СѓСЃР»РѕРІРёР№ РґР»СЏ С‚СЂРёРіРіРµСЂР° РІСЃРїР»С‹РІР°СЋС‰РµРіРѕ РѕРєРЅР°
   const checkAchievementTriggers = useCallback((lecturesCount, currentStreak, currentXP) => {
-    if (lecturesCount === 1) return { title: 'Первая волна', icon: 'water', color: '#4A90E2' };
-    if (lecturesCount === 5) return { title: 'Магистр знаний', icon: 'medal', color: '#9B59B6' };
-    if (currentStreak === 3) return { title: 'В ударе', icon: 'flame', color: '#FF5E5E' };
-    if (currentXP >= 500) return { title: 'Золотой запас', icon: 'trophy', color: '#F1C40F' };
+    // рџ’Ў РРЎРџР РђР’Р›Р•РќРћ: Р§РёСЃС‚С‹Р№ СЂСѓСЃСЃРєРёР№ С‚РµРєСЃС‚ РІ UTF-8 РґР»СЏ РґРёРЅР°РјРёС‡РµСЃРєРёС… РЅР°Р·РІР°РЅРёР№ Р°С‡РёРІРѕРє
+    if (lecturesCount === 1) return { title: 'РџРµСЂРІР°СЏ РІРѕР»РЅР° рџЊЉ', icon: 'water', color: '#4A90E2' };
+    if (lecturesCount === 5) return { title: 'РњР°РіРёСЃС‚СЂ Р·РЅР°РЅРёР№ рџЋ“', icon: 'medal', color: '#9B59B6' };
+    if (currentStreak === 3) return { title: 'Р’ СѓРґР°СЂРµ рџ”Ґ', icon: 'flame', color: '#FF5E5E' };
+    if (currentXP >= 500) return { title: 'Р—РѕР»РѕС‚РѕР№ Р·Р°РїР°СЃ рџЏ†', icon: 'trophy', color: '#F1C40F' };
     return null;
   }, []);
+
 
   const triggerAchievementPopUp = (award) => {
     setUnlockedAward(award);
@@ -43,10 +45,10 @@ export const AuthProvider = ({ children }) => {
     }).start();
   };
 
-  //Синхронизация прогресса
+  //РЎРёРЅС…СЂРѕРЅРёР·Р°С†РёСЏ РїСЂРѕРіСЂРµСЃСЃР°
   const syncProgress = useCallback(async (nickname) => {
     try {
-      // ИСПРАВЛЕНО: Лог на английском, чтобы Windows терминал не выдавал ромбики
+      // РРЎРџР РђР’Р›Р•РќРћ: Р›РѕРі РЅР° Р°РЅРіР»РёР№СЃРєРѕРј, С‡С‚РѕР±С‹ Windows С‚РµСЂРјРёРЅР°Р» РЅРµ РІС‹РґР°РІР°Р» СЂРѕРјР±РёРєРё
       console.log('?? [Sync] Starting progress synchronization with PostgreSQL...');
       const res = await apiClient.get('/api/progress');
       if (res.data.success) {
@@ -62,9 +64,9 @@ export const AuthProvider = ({ children }) => {
     }
   }, []);
 
-  // === ОБНОВЛЕННЫЙ БЛОК СИНХРОНИЗАЦИИ И АВТОРИЗАЦИИ ===
+  // === РћР‘РќРћР’Р›Р•РќРќР«Р™ Р‘Р›РћРљ РЎРРќРҐР РћРќРР—РђР¦РР Р РђР’РўРћР РР—РђР¦РР ===
 
-  // Функция синхронизации глоссария с PostgreSQL в локальную SQLite
+  // Р¤СѓРЅРєС†РёСЏ СЃРёРЅС…СЂРѕРЅРёР·Р°С†РёРё РіР»РѕСЃСЃР°СЂРёСЏ СЃ PostgreSQL РІ Р»РѕРєР°Р»СЊРЅСѓСЋ SQLite
   const syncGlossary = useCallback(async () => {
     try {
       console.log('?? [Sync] Starting glossary synchronization with PostgreSQL...');
@@ -81,33 +83,33 @@ export const AuthProvider = ({ children }) => {
     }
   }, []);
 
-  // Функция автоматического скачивания тем из облака в локальную SQLite
+  // Р¤СѓРЅРєС†РёСЏ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРѕРіРѕ СЃРєР°С‡РёРІР°РЅРёСЏ С‚РµРј РёР· РѕР±Р»Р°РєР° РІ Р»РѕРєР°Р»СЊРЅСѓСЋ SQLite
   const syncTopics = useCallback(async () => {
     try {
-      console.log('?? [Sync] Starting topics synchronization with PostgreSQL...');
+      console.log('рџ”„ [Sync] Starting topics synchronization with PostgreSQL...');
       const res = await apiClient.get('/api/topics');
       if (res.data.success) {
         const cloudTopics = res.data.topics || [];
 
-        // Сначала очистим старые локальные темы, чтобы не дублировать
+        // РЎРЅР°С‡Р°Р»Р° РѕС‡РёСЃС‚РёРј СЃС‚Р°СЂС‹Рµ Р»РѕРєР°Р»СЊРЅС‹Рµ С‚РµРјС‹, С‡С‚РѕР±С‹ РЅРµ РґСѓР±Р»РёСЂРѕРІР°С‚СЊ
         db.runSync('DELETE FROM topics');
 
-        // Записываем новые темы в SQLite телефона
+        // Р—Р°РїРёСЃС‹РІР°РµРј РЅРѕРІС‹Рµ С‚РµРјС‹ РІ SQLite С‚РµР»РµС„РѕРЅР°
         cloudTopics.forEach(topic => {
           db.runSync(
             'INSERT INTO topics (id, subject_key, title) VALUES (?, ?, ?)',
             [topic.id, topic.subject_key, topic.title]
           );
         });
-        console.log('? [Sync] Topics synced successfully (PostgreSQL -> SQLite).');
+        console.log('вњ… [Sync] Topics synced successfully (PostgreSQL -> SQLite).');
       }
     } catch (e) {
-      console.log("?? [Sync] Topics offline mode activated. Using cached local topics.");
+      console.log("вљ пёЏ [Sync] Topics offline mode activated. Using cached local topics.");
     }
   }, []);
 
 
-  // 2. Внутри useEffect (в самом конце метода init(), перед строкой init();) замени старый global на этот код:
+  // 2. Р’РЅСѓС‚СЂРё useEffect (РІ СЃР°РјРѕРј РєРѕРЅС†Рµ РјРµС‚РѕРґР° init(), РїРµСЂРµРґ СЃС‚СЂРѕРєРѕР№ init();) Р·Р°РјРµРЅРё СЃС‚Р°СЂС‹Р№ global РЅР° СЌС‚РѕС‚ РєРѕРґ:
   useEffect(() => {
     async function init() {
       try {
@@ -133,16 +135,16 @@ export const AuthProvider = ({ children }) => {
           }
         }
 
-        // ?? ИСПРАВЛЕНО: Слушаем событие разлогина из api.js внутри тела хука useEffect!
+        // рџ’Ў РРЎРџР РђР’Р›Р•РќРћ: РЎР»СѓС€Р°РµРј СЃРѕР±С‹С‚РёРµ СЂР°Р·Р»РѕРіРёРЅР° РёР· api.js РІРЅСѓС‚СЂРё С‚РµР»Р° С…СѓРєР° useEffect!
         const subscription = DeviceEventEmitter.addListener('FORCE_LOGOUT', () => {
           logout();
         });
 
-        // Чистим слушатель при размонтировании компонента, чтобы не было утечек памяти
+        // Р§РёСЃС‚РёРј СЃР»СѓС€Р°С‚РµР»СЊ РїСЂРё СЂР°Р·РјРѕРЅС‚РёСЂРѕРІР°РЅРёРё РєРѕРјРїРѕРЅРµРЅС‚Р°, С‡С‚РѕР±С‹ РЅРµ Р±С‹Р»Рѕ СѓС‚РµС‡РµРє РїР°РјСЏС‚Рё
         return () => subscription.remove();
 
       } catch (e) {
-        console.log('? [Init] Ошибка инициализации:', e);
+        console.log('вќЊ [Init] РћС€РёР±РєР° РёРЅРёС†РёР°Р»РёР·Р°С†РёРё:', e);
       } finally {
         setIsLoading(false);
       }
@@ -153,35 +155,35 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (email, password) => {
     try {
-      console.log('?? [AuthContext] Запрос авторизации на сервер...');
+      console.log('рџ“Ў [AuthContext] Р—Р°РїСЂРѕСЃ Р°РІС‚РѕСЂРёР·Р°С†РёРё РЅР° СЃРµСЂРІРµСЂ...');
       const response = await apiClient.post('/api/login', { email, password });
       
       if (response.data.success) {
         const { token, user: userData } = response.data;
         
-        // Сохраняем сессию на устройстве
+        // РЎРѕС…СЂР°РЅСЏРµРј СЃРµСЃСЃРёСЋ РЅР° СѓСЃС‚СЂРѕР№СЃС‚РІРµ
         await SecureStore.setItemAsync('user_token', token);
         await AsyncStorage.setItem('current_user', userData.username);
         
-        // Прописываем токен по умолчанию в Axios для фоновой синхронизации
+        // РџСЂРѕРїРёСЃС‹РІР°РµРј С‚РѕРєРµРЅ РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ РІ Axios РґР»СЏ С„РѕРЅРѕРІРѕР№ СЃРёРЅС…СЂРѕРЅРёР·Р°С†РёРё
         apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
         
-        // Кэшируем профиль в SQLite для оффлайн-режима и лидерборда
+        // РљСЌС€РёСЂСѓРµРј РїСЂРѕС„РёР»СЊ РІ SQLite РґР»СЏ РѕС„С„Р»Р°Р№РЅ-СЂРµР¶РёРјР° Рё Р»РёРґРµСЂР±РѕСЂРґР°
         try {
           db.runSync(
             'INSERT OR REPLACE INTO users (email, username, password, role, balance, streak_count) VALUES (?, ?, ?, ?, ?, ?);',
             [email.toLowerCase().trim(), userData.username, 'auth_session', userData.role || 'student', userData.balance || 0, userData.streak_count || 0]
           );
         } catch (sqliteErr) {
-          console.log('?? [SQLite Cache Error]:', sqliteErr.message);
+          console.log('вљ пёЏ [SQLite Cache Error]:', sqliteErr.message);
         }
 
-        // Обновляем глобальные стейты (Вход выполнен!)
+        // РћР±РЅРѕРІР»СЏРµРј РіР»РѕР±Р°Р»СЊРЅС‹Рµ СЃС‚РµР№С‚С‹ (Р’С…РѕРґ РІС‹РїРѕР»РЅРµРЅ!)
         setUser(userData);
         setIsLoggedIn(true);
         setStreak(userData.streak_count || 0);
         
-        // Запускаем фоновое обновление контента
+        // Р—Р°РїСѓСЃРєР°РµРј С„РѕРЅРѕРІРѕРµ РѕР±РЅРѕРІР»РµРЅРёРµ РєРѕРЅС‚РµРЅС‚Р°
         syncProgress(userData.username);
         syncGlossary();
         syncTopics();
@@ -189,10 +191,10 @@ export const AuthProvider = ({ children }) => {
         return { success: true };
       }
     } catch (error) {
-      console.log('? Ошибка метода login:', error.message);
+      console.log('вќЊ РћС€РёР±РєР° РјРµС‚РѕРґР° login:', error.message);
       return { 
         success: false, 
-        error: error.response?.data?.error || 'Неверный email или пароль.' 
+        error: error.response?.data?.error || 'РќРµРІРµСЂРЅС‹Р№ email РёР»Рё РїР°СЂРѕР»СЊ.' 
       };
     }
   };
@@ -204,13 +206,13 @@ export const AuthProvider = ({ children }) => {
       const res = await apiClient.post('/api/register', { email, username, password });
       if (res.data.success) return await login(email, password);
     } catch (error) {
-      return { success: false, error: error.response?.data?.error || 'Ошибка соединения' };
+      return { success: false, error: error.response?.data?.error || 'РћС€РёР±РєР° СЃРѕРµРґРёРЅРµРЅРёСЏ' };
     }
   };
 
-  // ФУНКЦИЯ БЕЗОПАСНОГО ВЫХОДА (LOGOUT)
+  // Р¤РЈРќРљР¦РРЇ Р‘Р•Р—РћРџРђРЎРќРћР“Рћ Р’Р«РҐРћР”Рђ (LOGOUT)
   const logout = async () => {
-    console.log('?? [AuthContext] Выход из аккаунта, очистка сессии устройства...');
+    console.log('?? [AuthContext] Р’С‹С…РѕРґ РёР· Р°РєРєР°СѓРЅС‚Р°, РѕС‡РёСЃС‚РєР° СЃРµСЃСЃРёРё СѓСЃС‚СЂРѕР№СЃС‚РІР°...');
     await SecureStore.deleteItemAsync('user_token');
     await AsyncStorage.removeItem('current_user');
     setUser(null);
@@ -219,7 +221,7 @@ export const AuthProvider = ({ children }) => {
     setStreak(0);
   };
 
-  // НАДЕЖНЫЙ ВЫЗОВ УДАЛЕНИЯ ЧЕРЕЗ PROFILE_SERVICE
+  // РќРђР”Р•Р–РќР«Р™ Р’Р«Р—РћР’ РЈР”РђР›Р•РќРРЇ Р§Р•Р Р•Р— PROFILE_SERVICE
   const deleteUserAccount = async (password) => {
     try {
       console.log('?? [AuthContext] Sending secure delete request via profileService...');
@@ -230,7 +232,7 @@ export const AuthProvider = ({ children }) => {
       if (response.data.success) {
         console.log('?? [AuthContext] Deletion successful. Clearing device cache...');
 
-        // Чистим локальную SQLite при удалении
+        // Р§РёСЃС‚РёРј Р»РѕРєР°Р»СЊРЅСѓСЋ SQLite РїСЂРё СѓРґР°Р»РµРЅРёРё
         if (currentUserNickname) {
           await dbService.clearUserData(currentUserNickname);
         }
@@ -252,25 +254,25 @@ export const AuthProvider = ({ children }) => {
       console.log('? [AuthContext] Deletion error details:', error.response?.data?.error || error.message);
       return {
         success: false,
-        error: error.response?.data?.error || 'Ошибка проверки пароля или таймаут сервера.'
+        error: error.response?.data?.error || 'РћС€РёР±РєР° РїСЂРѕРІРµСЂРєРё РїР°СЂРѕР»СЏ РёР»Рё С‚Р°Р№РјР°СѓС‚ СЃРµСЂРІРµСЂР°.'
       };
     }
   };
 
 
-  // --- НАЧАЛО ПРАВКИ 3 (НАЧИСЛЕНИЕ МОНЕТ НА КЛИЕНТЕ) ---
+  // --- РќРђР§РђР›Рћ РџР РђР’РљР 3 (РќРђР§РРЎР›Р•РќРР• РњРћРќР•Рў РќРђ РљР›РР•РќРўР•) ---
   const completeTopic = (u, t, id) => {
     dbService.completeTopic(u, t);
 
-    // Отправляем прогресс на сервер и сразу забираем награду в стейт
+    // РћС‚РїСЂР°РІР»СЏРµРј РїСЂРѕРіСЂРµСЃСЃ РЅР° СЃРµСЂРІРµСЂ Рё СЃСЂР°Р·Сѓ Р·Р°Р±РёСЂР°РµРј РЅР°РіСЂР°РґСѓ РІ СЃС‚РµР№С‚
     apiClient.post('/api/progress', { topic_id: id })
       .then((res) => {
         if (res.data.success && res.data.reward) {
-          // Обновляем баланс в оперативной памяти приложения без перезагрузки
+          // РћР±РЅРѕРІР»СЏРµРј Р±Р°Р»Р°РЅСЃ РІ РѕРїРµСЂР°С‚РёРІРЅРѕР№ РїР°РјСЏС‚Рё РїСЂРёР»РѕР¶РµРЅРёСЏ Р±РµР· РїРµСЂРµР·Р°РіСЂСѓР·РєРё
           setUser(prev => prev ? { ...prev, balance: (prev.balance || 0) + res.data.reward } : null);
         }
       })
-      .catch((e) => console.log('Ошибка отправки прогресса на бэкенд:', e.message));
+      .catch((e) => console.log('РћС€РёР±РєР° РѕС‚РїСЂР°РІРєРё РїСЂРѕРіСЂРµСЃСЃР° РЅР° Р±СЌРєРµРЅРґ:', e.message));
 
     setCompletedCourses(prev => {
       const updated = [...new Set([...prev, t])];
@@ -298,16 +300,16 @@ export const AuthProvider = ({ children }) => {
       <CoursesContext.Provider value={{ completedCourses, setCompletedCourses }}>
         {children}
 
-        {/* ГЛОБАЛЬНЫЙ POP-UP УВЕДОМЛЕНИЙ О ДОСТИЖЕНИЯХ */}
+        {/* Р“Р›РћР‘РђР›Р¬РќР«Р™ POP-UP РЈР’Р•Р”РћРњР›Р•РќРР™ Рћ Р”РћРЎРўРР–Р•РќРРЇРҐ */}
         <Modal visible={achievementModal} transparent animationType="fade">
           <View style={popupStyles.overlay}>
             <Animated.View style={[popupStyles.box, { transform: [{ scale: scaleAnim }] }]}>
               <View style={[popupStyles.iconRing, { backgroundColor: unlockedAward?.color + '20' }]}>
                 <Ionicons name={unlockedAward?.icon || 'trophy'} size={44} color={unlockedAward?.color || '#F1C40F'} />
               </View>
-              <Text style={popupStyles.title}>Достижение разблокировано!</Text>
-              <Text style={popupStyles.name}>«{unlockedAward?.title}»</Text>
-              <Text style={popupStyles.sub}>Загляните во вкладку достижений, чтобы забрать награду.</Text>
+              <Text style={popupStyles.title}>Р”РѕСЃС‚РёР¶РµРЅРёРµ СЂР°Р·Р±Р»РѕРєРёСЂРѕРІР°РЅРѕ!</Text>
+              <Text style={popupStyles.name}>В«{unlockedAward?.title}В»</Text>
+              <Text style={popupStyles.sub}>Р—Р°РіР»СЏРЅРёС‚Рµ РІРѕ РІРєР»Р°РґРєСѓ РґРѕСЃС‚РёР¶РµРЅРёР№, С‡С‚РѕР±С‹ Р·Р°Р±СЂР°С‚СЊ РЅР°РіСЂР°РґСѓ.</Text>
 
               <TouchableOpacity
                 style={[popupStyles.btn, { backgroundColor: unlockedAward?.color || '#4A90E2' }]}
@@ -316,7 +318,7 @@ export const AuthProvider = ({ children }) => {
                   setAchievementModal(false);
                 }}
               >
-                <Text style={popupStyles.btnText}>Отлично ??</Text>
+                <Text style={popupStyles.btnText}>РћС‚Р»РёС‡РЅРѕ ??</Text>
               </TouchableOpacity>
             </Animated.View>
           </View>

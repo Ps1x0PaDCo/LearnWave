@@ -9,20 +9,20 @@ import { getThemeColors } from '../styles/colors';
 import { db } from '../services/db';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Haptics from 'expo-haptics';
-import apiClient from '../services/api'; // Импортируем для списания монет
+import apiClient from '../services/api'; // РРјРїРѕСЂС‚РёСЂСѓРµРј РґР»СЏ СЃРїРёСЃР°РЅРёСЏ РјРѕРЅРµС‚
 
 const QuizScreen = ({ route, navigation }) => {
-  const { topicId, topicTitle } = route.params || { topicId: 1, topicTitle: 'Тест' };
+  const { topicId, topicTitle } = route.params || { topicId: 1, topicTitle: 'РўРµСЃС‚' };
   const { isDarkMode, completeTopic, user, setUser } = useContext(AuthContext);
   const colors = getThemeColors(isDarkMode);
 
   const [loading, setLoading] = useState(true);
   const [quizData, setQuizData] = useState(null);
-  const [visibleOptions, setVisibleOptions] = useState([]); // Опции, которые видит юзер (для 50/50)
+  const [visibleOptions, setVisibleOptions] = useState([]); // РћРїС†РёРё, РєРѕС‚РѕСЂС‹Рµ РІРёРґРёС‚ СЋР·РµСЂ (РґР»СЏ 50/50)
   const [selectedOption, setSelectedOption] = useState(null);
   const [isAnswered, setIsAnswered] = useState(false);
   const [isCorrect, setIsCorrect] = useState(false);
-  const [hintUsed, setHintUsed] = useState(false); // Использована ли подсказка в этом раунде
+  const [hintUsed, setHintUsed] = useState(false); // РСЃРїРѕР»СЊР·РѕРІР°РЅР° Р»Рё РїРѕРґСЃРєР°Р·РєР° РІ СЌС‚РѕРј СЂР°СѓРЅРґРµ
 
   useEffect(() => {
     const loadQuiz = () => {
@@ -31,18 +31,18 @@ const QuizScreen = ({ route, navigation }) => {
         if (row?.quiz_question) {
           const parsed = JSON.parse(row.quiz_question);
           setQuizData(parsed);
-          setVisibleOptions(parsed.options); // Изначально видны все варианты
+          setVisibleOptions(parsed.options); // РР·РЅР°С‡Р°Р»СЊРЅРѕ РІРёРґРЅС‹ РІСЃРµ РІР°СЂРёР°РЅС‚С‹
         } else {
           const defaultQuiz = {
-            question: `Вы изучили тему "${topicTitle}". Подтвердите, что материал усвоен!`,
-            options: ["Материал усвоен полностью!", "Нужно еще повторить"],
-            correct: "Материал усвоен полностью!"
+            question: `Р’С‹ РёР·СѓС‡РёР»Рё С‚РµРјСѓ "${topicTitle}". РџРѕРґС‚РІРµСЂРґРёС‚Рµ, С‡С‚Рѕ РјР°С‚РµСЂРёР°Р» СѓСЃРІРѕРµРЅ!`,
+            options: ["РњР°С‚РµСЂРёР°Р» СѓСЃРІРѕРµРЅ РїРѕР»РЅРѕСЃС‚СЊСЋ!", "РќСѓР¶РЅРѕ РµС‰Рµ РїРѕРІС‚РѕСЂРёС‚СЊ"],
+            correct: "РњР°С‚РµСЂРёР°Р» СѓСЃРІРѕРµРЅ РїРѕР»РЅРѕСЃС‚СЊСЋ!"
           };
           setQuizData(defaultQuiz);
           setVisibleOptions(defaultQuiz.options);
         }
       } catch (e) {
-        console.log('? Ошибка парсинга теста:', e.message);
+        console.log('вќЊ РћС€РёР±РєР° РїР°СЂСЃРёРЅРіР° С‚РµСЃС‚Р°:', e.message);
       } finally {
         setLoading(false);
       }
@@ -56,21 +56,21 @@ const QuizScreen = ({ route, navigation }) => {
     setSelectedOption(option);
   };
 
-  // ?? ФИЧА: Логика подсказки 50/50 (Убирает 2 неверных ответа за 30 монет)
+  // рџ’Ў Р¤РР§Рђ: Р›РѕРіРёРєР° РїРѕРґСЃРєР°Р·РєРё 50/50 (РЈР±РёСЂР°РµС‚ 2 РЅРµРІРµСЂРЅС‹С… РѕС‚РІРµС‚Р° Р·Р° 30 РјРѕРЅРµС‚)
   const useHint5050 = async () => {
     if (hintUsed || isAnswered) return;
 
-    const hintPrice = 30; // Стоимость подсказки в монетах
+    const hintPrice = 30; // РЎС‚РѕРёРјРѕСЃС‚СЊ РїРѕРґСЃРєР°Р·РєРё РІ РјРѕРЅРµС‚Р°С…
     if ((user?.balance || 0) < hintPrice) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert('Недостаточно монет ??', 'У вас не хватает монет для покупки подсказки.');
+      Alert.alert('РќРµРґРѕСЃС‚Р°С‚РѕС‡РЅРѕ РјРѕРЅРµС‚ рџЄ™', 'РЈ РІР°СЃ РЅРµ С…РІР°С‚Р°РµС‚ РјРѕРЅРµС‚ РґР»СЏ РїРѕРєСѓРїРєРё РїРѕРґСЃРєР°Р·РєРё.');
       return;
     }
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     try {
-      // Списываем монеты через созданный нами ранее эндпоинт магазина
+      // РЎРїРёСЃС‹РІР°РµРј РјРѕРЅРµС‚С‹ С‡РµСЂРµР· СЃРѕР·РґР°РЅРЅС‹Р№ РЅР°РјРё СЂР°РЅРµРµ СЌРЅРґРїРѕРёРЅС‚ РјР°РіР°Р·РёРЅР°
       const res = await apiClient.post('/api/shop/buy', {
         item_type: 'quiz_hint',
         item_value: 'used_in_quiz',
@@ -78,17 +78,17 @@ const QuizScreen = ({ route, navigation }) => {
       });
 
       if (res.data.success) {
-        // Обновляем баланс монет на клиенте
+        // РћР±РЅРѕРІР»СЏРµРј Р±Р°Р»Р°РЅСЃ РјРѕРЅРµС‚ РЅР° РєР»РёРµРЅС‚Рµ
         setUser(prev => prev ? { ...prev, balance: res.data.newBalance } : null);
 
-        // Логика 50/50: оставляем правильный ответ + 1 случайный неверный
+        // Р›РѕРіРёРєР° 50/50: РѕСЃС‚Р°РІР»СЏРµРј РїСЂР°РІРёР»СЊРЅС‹Р№ РѕС‚РІРµС‚ + 1 СЃР»СѓС‡Р°Р№РЅС‹Р№ РЅРµРІРµСЂРЅС‹Р№
         const correctAnswer = quizData.correct;
         const incorrectAnswers = quizData.options.filter(opt => opt !== correctAnswer);
 
-        // Выбираем один случайный неверный ответ
+        // Р’С‹Р±РёСЂР°РµРј РѕРґРёРЅ СЃР»СѓС‡Р°Р№РЅС‹Р№ РЅРµРІРµСЂРЅС‹Р№ РѕС‚РІРµС‚
         const randomIncorrect = incorrectAnswers[Math.floor(Math.random() * incorrectAnswers.length)];
 
-        // Перемешиваем их, чтобы правильный не всегда был первым
+        // РџРµСЂРµРјРµС€РёРІР°РµРј РёС…, С‡С‚РѕР±С‹ РїСЂР°РІРёР»СЊРЅС‹Р№ РЅРµ РІСЃРµРіРґР° Р±С‹Р» РїРµСЂРІС‹Рј
         const newOptions = [correctAnswer, randomIncorrect].sort(() => Math.random() - 0.5);
 
         setVisibleOptions(newOptions);
@@ -96,7 +96,7 @@ const QuizScreen = ({ route, navigation }) => {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
     } catch (err) {
-      Alert.alert('Ошибка', 'Не удалось активировать подсказку.');
+      Alert.alert('РћС€РёР±РєР°', 'РќРµ СѓРґР°Р»РѕСЃСЊ Р°РєС‚РёРІРёСЂРѕРІР°С‚СЊ РїРѕРґСЃРєР°Р·РєСѓ.');
     }
   };
 
@@ -135,9 +135,9 @@ const QuizScreen = ({ route, navigation }) => {
         >
           <Ionicons name="close" size={24} color={colors.textPrimary} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Проверка знаний</Text>
+        <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>РџСЂРѕРІРµСЂРєР° Р·РЅР°РЅРёР№</Text>
 
-        {/* КНОПКА ПОДСКАЗКИ (Отображается, только если вариантов больше 2 и ответ еще не дан) */}
+        {/* РљРќРћРџРљРђ РџРћР”РЎРљРђР—РљР (РћС‚РѕР±СЂР°Р¶Р°РµС‚СЃСЏ, С‚РѕР»СЊРєРѕ РµСЃР»Рё РІР°СЂРёР°РЅС‚РѕРІ Р±РѕР»СЊС€Рµ 2 Рё РѕС‚РІРµС‚ РµС‰Рµ РЅРµ РґР°РЅ) */}
         {quizData?.options.length > 2 && !isAnswered ? (
           <TouchableOpacity
             style={[
@@ -148,7 +148,7 @@ const QuizScreen = ({ route, navigation }) => {
             onPress={useHint5050}
           >
             <Ionicons name="wand-outline" size={18} color={hintUsed ? colors.textMuted : '#F1C40F'} />
-            <Text style={[styles.hintBtnText, { color: hintUsed ? colors.textMuted : '#F1C40F' }]}>50/50 (-30??)</Text>
+            <Text style={[styles.hintBtnText, { color: hintUsed ? colors.textMuted : '#F1C40F' }]}>50/50 (-30рџЄ™)</Text>
           </TouchableOpacity>
         ) : (
           <View style={{ width: 45 }} />
@@ -162,7 +162,7 @@ const QuizScreen = ({ route, navigation }) => {
           </Text>
         </View>
 
-        {/* ВАРИАНТЫ ОТВЕТОВ (Рендерим только visibleOptions) */}
+        {/* Р’РђР РРђРќРўР« РћРўР’Р•РўРћР’ (Р РµРЅРґРµСЂРёРј С‚РѕР»СЊРєРѕ visibleOptions) */}
         <View style={styles.optionsContainer}>
           {visibleOptions.map((option, idx) => {
             const isSelected = selectedOption === option;
@@ -208,7 +208,7 @@ const QuizScreen = ({ route, navigation }) => {
               disabled={!selectedOption}
               onPress={checkAnswer}
             >
-              <Text style={styles.actionBtnText}>Проверить ответ</Text>
+              <Text style={styles.actionBtnText}>РџСЂРѕРІРµСЂРёС‚СЊ РѕС‚РІРµС‚</Text>
             </TouchableOpacity>
           ) : (
             <TouchableOpacity
@@ -216,7 +216,7 @@ const QuizScreen = ({ route, navigation }) => {
               onPress={() => navigation.goBack()}
             >
               <Text style={styles.actionBtnText}>
-                {isCorrect ? 'Завершить (+50 ??)' : 'Вернуться к лекции'}
+                {isCorrect ? 'Р—Р°РІРµСЂС€РёС‚СЊ (+50 рџЄ™)' : 'Р’РµСЂРЅСѓС‚СЊСЃСЏ Рє Р»РµРєС†РёРё'}
               </Text>
             </TouchableOpacity>
           )}
