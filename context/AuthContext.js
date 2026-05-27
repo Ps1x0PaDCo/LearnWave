@@ -125,14 +125,16 @@ export const AuthProvider = ({ children }) => {
           const res = await apiClient.get('/api/profile').catch(() => null);
 
           if (res?.data?.success && res.data.user && res.data.user.length > 0) {
-            const fetchedUser = res.data.user[0];
+            const fetchedUser = res.data.user[0]; // 💡 Получили чистый объект
             setUser(fetchedUser);
             setIsLoggedIn(true);
             setStreak(fetchedUser.streak_count || 0);
             await syncProgress(fetchedUser.username);
+
             try {
               const done = db.getAllSync(
                 "SELECT topic_key FROM user_progress WHERE username = ? AND status = 'completed'",
+                // 🔥 ИСПРАВЛЕНО ТУТ: было [fetchedUser[0].username], убран лишний [0]
                 [fetchedUser.username]
               );
               setCompletedCourses(done.map(row => row.topic_key));
