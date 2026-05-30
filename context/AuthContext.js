@@ -400,7 +400,7 @@ export const AuthProvider = ({ children }) => {
       user, isLoggedIn, isDarkMode, streak, isLoading,
       nickname: user?.username, userRole: user?.role, calculateLevel,
       login, register, logout, deleteUserAccount,
-       completedCourses, setCompletedCourses, activeBorder, setActiveBorder,
+       completedCourses, setCompletedCourses, activeBorder, setActiveBorder,setUser,
       toggleTheme: async () => {
         const n = !isDarkMode; setIsDarkMode(n);
         await AsyncStorage.setItem('user_theme', n ? 'dark' : 'light');

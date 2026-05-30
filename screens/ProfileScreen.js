@@ -1,7 +1,7 @@
-import React, { useContext, useEffect, useState } from 'react';
+import React, { useContext, useEffect, useState, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Alert,
-  ScrollView, Dimensions, StatusBar, Platform, ActivityIndicator, Modal, TextInput
+  ScrollView, Dimensions, StatusBar, Platform, ActivityIndicator, Modal, TextInput, Animated
 } from 'react-native';
 import { AuthContext } from '../context/AuthContext';
 import { getThemeColors } from '../styles/colors';
@@ -10,15 +10,25 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 
+
 const { width } = Dimensions.get('window');
 
 const AVATAR_DATA = {
-  '🦉': { label: 'Мудрость', desc: 'Символ глубоких знаний.' },
-  '🦊': { label: 'Остроумие', desc: 'Признак хитрости и гибкого ума.' },
-  '🐱': { label: 'Независимость', desc: 'Любопытство в познании мира.' },
-  '🐼': { label: 'Выдержка', desc: 'Спокойствие в решении задач.' },
-  '🦁': { label: 'Лидерство', desc: 'Сила воли и стремление к цели.' }
+  //  Старые талисманы
+  '🦉': { label: 'Мудрость', desc: 'Символ глубоких академических знаний.' },
+  '🦊': { label: 'Остроумие', desc: 'Признак хитрости и гибкого алгоритмического ума.' },
+  '🐱': { label: 'Независимость', desc: 'Любопытство в поиске нестандартных решений.' },
+  '🐼': { label: 'Выдержка', desc: 'Спокойствие и хладнокровие при дебаге сложного кода.' },
+  '🦁': { label: 'Лидерство', desc: 'Сила воли, целеустремленность и стремление к цели.' },
+
+  //   НОВЫЕ ТАЛИСМАНЫ 
+  '🦈': { label: 'Акула кода', desc: 'Агрессивное и стремительное решение архитектурных задач.' },
+  '🐲': { label: 'Дракон компиляции', desc: 'Огненная страсть к созданию высокопроизводительных систем.' },
+  '🦫': { label: 'Бобёр-архитектор', desc: 'Методичное и надежное проектирование баз данных.' },
+  '🦅': { label: 'Орлиный взор', desc: 'Филигранный поиск багов и уязвимостей в исходном коде.' },
+  '🤖': { label: 'Сингулярность', desc: 'Полное слияние разума с искусственным интеллектом.' }
 };
+
 
 const ProfileScreen = ({ navigation }) => {
   const {
@@ -31,12 +41,42 @@ const ProfileScreen = ({ navigation }) => {
   const { level, xpInCurrentLevel, progress, xpRemaining, xpPerLevel } = calculateLevel(user?.balance || 0);
 
   const colors = getThemeColors(isDarkMode);
+
+  /*Хук*/
   const [selectedAvatar, setSelectedAvatar] = useState('🦉');
   const [stats, setStats] = useState({ completed: [], awards: [] });
   const [loading, setLoading] = useState(false);
   // Состояния для модалки безопасного удаления аккаунта
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [confirmPassword, setConfirmPassword] = useState('');
+  // 💡 Состояния для новых модалок кастомизации
+  const [avatarModalVisible, setAvatarModalVisible] = useState(false);
+  const [borderModalVisible, setBorderModalVisible] = useState(false);
+
+    // 🌟 ЖЕСТКАЯ ФИКСАЦИЯ АНИМАЦИЙ В ПАМЯТИ (ИВТ-ОПТИМИЗАЦИЯ СВЯЗЕЙ)
+  const neonAnim = useRef(new Animated.Value(0.4)).current;
+  const matrixScroll = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    // 1. Бесконечный цикл неона
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(neonAnim, { toValue: 1, duration: 1200, useNativeDriver: false }),
+        Animated.timing(neonAnim, { toValue: 0.4, duration: 1200, useNativeDriver: false })
+      ])
+    ).start();
+
+    // 2. 🟢 БЕСКОНЕЧНЫЙ ЦИКЛ ПАДЕНИЯ МАТРИЦЫ (Теперь она побежит со 100% гарантией!)
+    Animated.loop(
+      Animated.timing(matrixScroll, {
+        toValue: 1,
+        duration: 2500, // Скорость водопада цифр
+        useNativeDriver: true, // GPU-ускорение (0% нагрузки на твой Realme GT)
+      })
+    ).start();
+  }, [neonAnim, matrixScroll]);
+
+
 
   useEffect(() => {
     const loadSavedBorder = async () => {
@@ -146,22 +186,118 @@ const ProfileScreen = ({ navigation }) => {
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
         <View style={[styles.mainCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
 
-          {/* 🖼️ Аватар с динамической рамкой из Wave-Shop */}
-          <View style={{
-            width: 120,
-            height: 120,
-            borderRadius: 60,
-            borderWidth: (!activeBorder || activeBorder === 'none') ? 0 : 4,
-            // 💡 Синхронизировали рамки с товарами из Wave-Shop:
-            borderColor: activeBorder === 'bronze' ? '#CD7F32' : activeBorder === 'gold' ? '#FFD700' : '#FF007F',
-            justifyContent: 'center',
-            alignItems: 'center',
-            marginBottom: 10,
-            backgroundColor: colors.background
-          }}>
-            <Text style={[styles.bigEmoji, { marginBottom: 0, fontSize: 65, textAlign: 'center' }]}>{selectedAvatar}</Text>
-          </View>
+          {/* 🖼️ Аватар с процедурно-генерируемой бегущей Матричной рамкой и Неоном */}
+          <TouchableOpacity 
+            activeOpacity={0.9}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setAvatarModalVisible(true); // Открываем модалку талисманов по тапу на сову
+            }}
+            style={{ width: 130, height: 130, justifyContent: 'center', alignItems: 'center', marginBottom: 15, alignSelf: 'center' }}
+          >
+            {/* 💡 СЛОЙ 1: АНИМИРОВАННЫЙ НЕОН (Твой сочный, пульсирующий неон) */}
+            {activeBorder === 'neon' && (
+              <Animated.View style={{
+                position: 'absolute',
+                width: 120,
+                height: 120,
+                borderRadius: 60,
+                borderWidth: 5,
+                borderColor: '#FF0055',
+                backgroundColor: 'transparent',
+                shadowColor: '#FF0055',
+                shadowOffset: { width: 0, height: 0 },
+                shadowOpacity: 1,
+                shadowRadius: 15,
+                elevation: 12,
+                transform: [{ scale: neonAnim.interpolate({ inputRange: [0.4, 1], outputRange: [0.97, 1.04] }) }],
+                zIndex: 1,
+              }} />
+            )}
+
+            {/* 💡 СЛОЙ 1.5: 🟢 БЕГУЩИЙ ЦИФРОВОЙ КОД МАТРИЦЫ (ПОЛНОСТЬЮ ИСПРАВЛЕН!) */}
+            {activeBorder === 'matrix' && (
+              <View style={{
+                position: 'absolute',
+                width: 124,
+                height: 124,
+                borderRadius: 62,
+                borderWidth: 6, // 6 пикселей для идеальной видимости цифр
+                borderColor: '#002200', 
+                backgroundColor: '#000',
+                overflow: 'hidden', 
+                zIndex: 1,
+                shadowColor: '#00FF41',
+                shadowOffset: { width: 0, height: 0 },
+                shadowOpacity: 1,
+                shadowRadius: 12,
+                elevation: 10, // Сочное зелёное свечение наружу
+              }}>
+                {/* Анимированный водопад бинарного кода */}
+                <Animated.View style={{
+                  width: '100%',
+                  height: '200%', 
+                  position: 'absolute',
+                  alignItems: 'center',
+                  justifyContent: 'space-around',
+                  transform: [{
+                    translateY: matrixScroll.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0, -140] // Увеличили сдвиг, чтобы поток летел быстрее и бесшовнее
+                    })
+                  }]
+                }}>
+                  {/* Плотная и сверхконтрастная матричная сетка */}
+                  <Text style={{ 
+                    color: '#00FF41', 
+                    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', 
+                    fontSize: 11, 
+                    fontWeight: '900', 
+                    lineHeight: 10, 
+                    textAlign: 'center',
+                    letterSpacing: 1,
+                    opacity: 0.95
+                  }}>
+                    10101010{"\n"}01010101{"\n"}11001100{"\n"}00110011{"\n"}10101010{"\n"}01010101{"\n"}11001100{"\n"}00110011{"\n"}10101010{"\n"}01010101{"\n"}11001100{"\n"}00110011{"\n"}10101010{"\n"}01010101
+                  </Text>
+                </Animated.View>
+              </View>
+            )}
+
+            {/* 💡 СЛОЙ 2: НЕПРОЗРАЧНЫЙ СТАТИЧНЫЙ АВАТАР (Защищает сову) */}
+            <View style={{
+              position: 'absolute',
+              width: 110,
+              height: 110,
+              borderRadius: 55,
+              backgroundColor: colors.surface, 
+              justifyContent: 'center',
+              alignItems: 'center',
+              zIndex: 2, 
+            }}>
+              <Text style={[styles.bigEmoji, { marginBottom: 0, fontSize: 62, textAlign: 'center' }]}>
+                {selectedAvatar}
+              </Text>
+            </View>
+
+            {/* СТАТИЧНЫЕ МАТЕРИАЛЬНЫЕ РАМКИ (Бронза, Золото, Платина) */}
+            {(activeBorder === 'bronze' || activeBorder === 'gold' || activeBorder === 'platinum') && (
+              <View style={{
+                position: 'absolute',
+                width: 120,
+                height: 120,
+                borderRadius: 60,
+                borderWidth: 4,
+                borderColor: activeBorder === 'bronze' ? '#CD7F32' : activeBorder === 'gold' ? '#FFD700' : '#E5E4E2',
+                backgroundColor: 'transparent',
+                zIndex: 3,
+              }} />
+            )}
+
+          </TouchableOpacity>
           {/* 🖼️ КОНЕЦ Аватар с динамической рамкой кастомизации интерфейса */}
+
+
 
           <View style={styles.nameRow}>
             <Text style={[styles.userName, { color: colors.textPrimary }]}>{nickname}</Text>
@@ -211,6 +347,47 @@ const ProfileScreen = ({ navigation }) => {
           </View>
           {/* === КОНЕЦ ВСТАВКИ ПРОГРЕСС-БАРА === */}
 
+          {/* === 🎛️ КОМПАКТНАЯ ПАНЕЛЬ КАСТОМИЗАЦИИ (Dropdown-стиль) === */}
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, marginTop: 15, width: '100%' }}>
+
+            {/* Кнопка смены аватара / талисмана */}
+            <TouchableOpacity
+              style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.background, paddingVertical: 14, paddingHorizontal: 16, borderRadius: 16, borderWidth: 1, borderColor: colors.border }}
+              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setAvatarModalVisible(true); }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Text style={{ fontSize: 16 }}>{selectedAvatar}</Text>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textPrimary }}>Аватар</Text>
+              </View>
+              <Ionicons name="chevron-down" size={14} color={colors.textMuted} />
+            </TouchableOpacity>
+
+            {/* Кнопка смены рамки */}
+            <TouchableOpacity
+              style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.background, paddingVertical: 14, paddingHorizontal: 16, borderRadius: 16, borderWidth: 1, borderColor: colors.border }}
+              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setBorderModalVisible(true); }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                {/* Вместо вылезающего кружка ставим красивую контурную иконку палитры/кастомизации */}
+                <Ionicons
+                  name="color-palette-outline"
+                  size={16}
+                  color={activeBorder === 'none' ? colors.textMuted : activeBorder === 'bronze' ? '#CD7F32' : activeBorder === 'gold' ? '#FFD700' : '#FF0055'}
+                />
+<Text style={{ fontSize: 13, fontWeight: '700', color: colors.textPrimary }}>
+  {/* 💡 Динамически пишем название абсолютно любой выбранной рамки! */}
+  {activeBorder === 'none' ? 'Без рамки' : 
+   activeBorder === 'bronze' ? 'Бронза' : 
+   activeBorder === 'gold' ? 'Золото' : 
+   activeBorder === 'platinum' ? 'Платина' : 'Матрица'}
+</Text>
+
+              </View>
+              <Ionicons name="chevron-down" size={14} color={colors.textMuted} />
+            </TouchableOpacity>
+
+          </View>
+
           <Text style={[styles.avatarDesc, { color: colors.textMuted }]}>{AVATAR_DATA[selectedAvatar]?.desc}</Text>
 
           <View style={[styles.quickStats, { borderTopColor: colors.border }]}>
@@ -233,22 +410,6 @@ const ProfileScreen = ({ navigation }) => {
           <Text style={[styles.achBtnText, { color: colors.textPrimary }]}>Посмотреть все достижения</Text>
           <Ionicons name="chevron-forward" size={20} color={colors.primary} />
         </TouchableOpacity>
-
-        <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Выбор талисмана</Text>
-        <View style={styles.avatarGrid}>
-          {Object.keys(AVATAR_DATA).map(emoji => (
-            <TouchableOpacity
-              key={emoji}
-              onPress={() => changeAvatar(emoji)}
-              style={[styles.avatarBtn, {
-                backgroundColor: selectedAvatar === emoji ? colors.primary + '15' : colors.surface,
-                borderColor: selectedAvatar === emoji ? colors.primary : colors.border
-              }]}
-            >
-              <Text style={{ fontSize: 24 }}>{emoji}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
 
         {/* КНОПКИ УПРАВЛЕНИЯ СЕССИЕЙ И АККАУНТОМ */}
         <View style={{ gap: 10, marginTop: 10 }}>
@@ -338,7 +499,92 @@ const ProfileScreen = ({ navigation }) => {
           </View>
         </View>
       </Modal>
+
+      {/* 🔮 МОДАЛКА 1: ВЫБОР ТАЛИСМАНА */}
+      <Modal visible={avatarModalVisible} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalBox, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.modalT, { color: colors.textPrimary }]}>Выберите талисман</Text>
+
+            {/* 💡 ИСПРАВЛЕНО: Добавлен автоматический перенос строк flexWrap и центрирование */}
+            <View style={{
+              flexDirection: 'row',
+              flexWrap: 'wrap',
+              justifyContent: 'center',
+              alignItems: 'center',
+              marginVertical: 15,
+              gap: 12, // Увеличили расстояние для удобного нажатия пальцем
+              width: '100%'
+            }}>
+              {Object.keys(AVATAR_DATA).map(emoji => (
+                <TouchableOpacity
+                  key={emoji}
+                  onPress={() => { changeAvatar(emoji); setAvatarModalVisible(false); }}
+                  style={{
+                    width: 56, // Фиксированный квадратный размер кнопки
+                    height: 56,
+                    borderRadius: 18,
+                    borderWidth: 2,
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    backgroundColor: selectedAvatar === emoji ? colors.primary + '15' : colors.background,
+                    borderColor: selectedAvatar === emoji ? colors.primary : colors.border
+                  }}
+                >
+                  <Text style={{ fontSize: 26, textAlign: 'center' }}>{emoji}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+
+            <TouchableOpacity style={{ marginTop: 10, alignItems: 'center' }} onPress={() => setAvatarModalVisible(false)}>
+              <Text style={{ color: colors.textMuted, fontWeight: 'bold' }}>Закрыть</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* 🔮 МОДАЛКА 2: ВЫБОР КУПЛЕННОЙ РАМКИ */}
+      <Modal visible={borderModalVisible} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalBox, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.modalT, { color: colors.textPrimary }]}>Выберите рамку</Text>
+
+            <View style={{ gap: 10, marginVertical: 15 }}>
+              {[
+                { id: 'none', label: 'Без рамки', color: colors.textMuted },
+                { id: 'bronze', label: 'Бронзовое свечение', color: '#CD7F32' },
+                { id: 'gold', label: 'Магистр золота', color: '#FFD700' },
+                { id: 'neon', label: 'Пульсирующий неон', color: '#FF0055' },
+                // Внутри кнопок-выпадашек и модалки рамок:
+                { id: 'platinum', label: 'Платиновый статус', color: '#E5E4E2' },
+                { id: 'matrix', label: 'Матричный код', color: '#00FF41' }
+
+              ].map(b => (
+                <TouchableOpacity
+                  key={b.id}
+                  onPress={async () => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setActiveBorder(b.id);
+                    if (nickname) await AsyncStorage.setItem(`border_${nickname}`, b.id);
+                    setBorderModalVisible(false);
+                  }}
+                  style={{ flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, borderWidth: 1, backgroundColor: activeBorder === b.id ? colors.primary + '10' : colors.background, borderColor: activeBorder === b.id ? colors.primary : colors.border, gap: 12 }}
+                >
+                  <View style={{ width: 16, height: 16, borderRadius: 8, borderWidth: 3, borderColor: b.color }} />
+                  <Text style={{ fontSize: 14, fontWeight: '600', color: colors.textPrimary }}>{b.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <TouchableOpacity style={{ marginTop: 5, alignItems: 'center' }} onPress={() => setBorderModalVisible(false)}>
+              <Text style={{ color: colors.textMuted, fontWeight: 'bold' }}>Закрыть</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
+
   );
 };
 
@@ -348,7 +594,7 @@ const styles = StyleSheet.create({
   navTitle: { fontSize: 20, fontWeight: 'bold' },
   scroll: { paddingHorizontal: 24, paddingBottom: 40 },
   mainCard: { padding: 30, borderRadius: 32, alignItems: 'center', borderWidth: 1, marginBottom: 20, elevation: 4, shadowOpacity: 0.05, shadowRadius: 15 },
-  bigEmoji: { fontSize: 80, marginBottom: 10 },
+  bigEmoji: { fontSize: 80 },
   nameRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6, gap: 10 },
   userName: { fontSize: 26, fontWeight: 'bold' },
   editBtn: { padding: 5 },
@@ -361,8 +607,6 @@ const styles = StyleSheet.create({
   achBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20, borderRadius: 24, borderWidth: 1, marginBottom: 30, elevation: 2 },
   achBtnText: { fontWeight: 'bold' },
   sectionTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 16 },
-  avatarGrid: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 40 },
-  avatarBtn: { width: 55, height: 55, borderRadius: 18, borderWidth: 2, justifyContent: 'center', alignItems: 'center' },
   logoutBtn: { height: 60, borderRadius: 20, borderWidth: 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, elevation: 2 },
   logoutText: { color: '#FF5E5E', fontWeight: 'bold', fontSize: 16 },
 
@@ -371,6 +615,7 @@ const styles = StyleSheet.create({
   modalT: { fontSize: 22, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
   mInput: { height: 60, borderWidth: 1.5, borderRadius: 18, paddingHorizontal: 15, marginBottom: 20, fontSize: 16 },
   modalActions: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 25, paddingRight: 5 },
+
   // === СТИЛИ ПЛАШКИ ПОЧТЫ ===
   emailBadge: {
     flexDirection: 'row',
@@ -388,8 +633,8 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     letterSpacing: 0.2,
   },
-
 });
+
 
 export default ProfileScreen;
 

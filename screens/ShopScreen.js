@@ -8,6 +8,7 @@ import { AuthContext } from '../context/AuthContext';
 import { getThemeColors } from '../styles/colors';
 import apiClient from '../services/api';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 
 const { width } = Dimensions.get('window');
@@ -28,8 +29,13 @@ const ShopScreen = ({ navigation }) => {
         cosmetics: [
             { id: 'frame_bronze', type: 'frame', value: 'bronze_frame', title: 'Бронзовая рамка', desc: 'Выделит твой аватар стильным бронзовым свечением в лидерборде.', price: 250, icon: 'ribbon-outline', color: '#CD7F32' },
             { id: 'frame_gold', type: 'frame', value: 'gold_frame', title: 'Золотая рамка', desc: 'Премиальный золотой ободок для истинных магистров знаний.', price: 500, icon: 'trophy-outline', color: '#FFD700' },
-            { id: 'frame_neon', type: 'frame', value: 'neon_frame', title: 'Неоновый кастом', desc: 'Ультрасовременная переливающаяся рамка для топ-технарей.', price: 1000, icon: 'flash-outline', color: '#FF007F' },
+            
+            // Новые товары
+            { id: 'frame_platinum', type: 'frame', value: 'platinum_frame', title: 'Платиновый апгрейд', desc: 'Благородный стальной оттенок платины для лучших исследователей.', price: 750, icon: 'shield-checkmark-outline', color: '#E5E4E2' },
+            { id: 'frame_neon', type: 'frame', value: 'neon_frame', title: 'Неоновый кастом', desc: 'Ультрасовременная переливающаяся рамка для топ-технарей.', price: 1000, icon: 'flash-outline', color: '#FF0055' },
+            { id: 'frame_matrix', type: 'frame', value: 'matrix_frame', title: 'Матричный код', desc: 'Ядовито-зеленый цифровой ободок для хакеров и специалистов по ИБ.', price: 1500, icon: 'terminal-outline', color: '#00FF41' },
         ]
+
     };
 
     const handleBuy = async (item) => {
@@ -64,13 +70,22 @@ const ShopScreen = ({ navigation }) => {
                 }
                 // 🔼 КОНЕЦ ВСТАВКИ
 
-                Alert.alert('Ура! 🎉', `${item.title} успешно приобретен(а)!`);
+                Alert.alert('Ура! 🎉', `${item.title} товар приобретён!`);
             }
 
-        } catch (err) {
+                } catch (err) {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+            
+            // 📡 ВЫВОДИМ ПОЛНЫЙ ТЕХНИЧЕСКИЙ ЛОГ В ТЕРМИНАЛ VS CODE:
+            console.log('\n🚨 [SHOP ERROR COMPONENT]: Произошел сбой при покупке товара!');
+            console.log('STATUS:', err.response?.status);
+            console.log('SERVER MESSAGE:', JSON.stringify(err.response?.data));
+            console.log('LOCAL MESSAGE:', err.message);
+            console.log('-----------------------------------------------------\n');
+
             Alert.alert('Ошибка', err.response?.data?.error || 'Не удалось связаться с сервером.');
         } finally {
+
             setBuyingId(null);
         }
     };
