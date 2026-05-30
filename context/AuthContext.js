@@ -184,6 +184,19 @@ export const AuthProvider = ({ children }) => {
   }, [syncProgress, syncGlossary, syncTopics]);
 
 
+    // 💡 Динамический расчет уровня на основе баланса пользователя
+  const calculateLevel = (totalXp) => {
+    const xp = totalXp || 0;
+    const xpPerLevel = 100; // Количество очков для повышения уровня
+    
+    const level = Math.floor(xp / xpPerLevel) + 1;
+    const xpInCurrentLevel = xp % xpPerLevel; 
+    const progress = xpInCurrentLevel / xpPerLevel; // Значение от 0 до 1 для прогресс-бара
+    const xpRemaining = xpPerLevel - xpInCurrentLevel;
+    
+    return { level, xpInCurrentLevel, progress, xpRemaining, xpPerLevel };
+  };
+
   const login = async (email, password) => {
     try {
       console.log('📡 [AuthContext] Запрос авторизации на сервер...');
@@ -340,7 +353,7 @@ export const AuthProvider = ({ children }) => {
   return (
     <AuthContext.Provider value={{
       user, isLoggedIn, isDarkMode, streak, isLoading,
-      nickname: user?.username, userRole: user?.role,
+      nickname: user?.username, userRole: user?.role, calculateLevel,
       login, register, logout, deleteUserAccount, completedCourses, setCompletedCourses,
       toggleTheme: async () => {
         const n = !isDarkMode; setIsDarkMode(n);
@@ -349,6 +362,7 @@ export const AuthProvider = ({ children }) => {
       completeTopic,
       getLeaderboard: dbService.getLeaderboard,
       executeRaw: (q, p) => db.getAllSync(q, p)
+      
     }}>
       <CoursesContext.Provider value={{ completedCourses, setCompletedCourses }}>
         {children}

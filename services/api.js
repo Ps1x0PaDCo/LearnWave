@@ -3,19 +3,10 @@ import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DeviceEventEmitter } from 'react-native';
 
-
-// Стало:
-import axios from 'axios';
 import { BASE_URL } from '../config'; // ?? Подтяни правильный относительный путь до config.js
 
-export const apiClient = axios.create({
-  baseURL: BASE_URL, // ?? Теперь адрес меняется в одном месте для всего приложения!
-  timeout: 10000,
-});
-
-
 const apiClient = axios.create({
-  baseURL: API_URL,
+  baseURL: BASE_URL,
   timeout: 10000, // Таймаут 10 секунд, чтобы приложение не зависало при плохой сети
   headers: {
     'Content-Type': 'application/json',

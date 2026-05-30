@@ -10,6 +10,8 @@ import { db } from '../services/db';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Haptics from 'expo-haptics';
 
+
+
 const ReferenceScreen = ({ navigation }) => {
   const { isDarkMode } = useContext(AuthContext);
   const colors = getThemeColors(isDarkMode);
