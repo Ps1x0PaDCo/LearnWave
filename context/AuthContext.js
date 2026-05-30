@@ -183,9 +183,8 @@ export const AuthProvider = ({ children }) => {
     init();
   }, [syncProgress, syncGlossary, syncTopics]);
 
-
-    // 💡 Динамический расчет уровня на основе баланса пользователя
-  const calculateLevel = (totalXp) => {
+   // 💡 Динамический расчет уровня на основе баланса пользователя
+    const calculateLevel = (totalXp) => {
     const xp = totalXp || 0;
     const xpPerLevel = 100; // Количество очков для повышения уровня
     
@@ -226,7 +225,7 @@ export const AuthProvider = ({ children }) => {
         setUser(userData);
         setIsLoggedIn(true);
         setStreak(userData.streak_count || 0);
-        try {
+        /*try {
           const done = db.getAllSync(
             "SELECT topic_key FROM user_progress WHERE username = ? AND status = 'completed'",
             [userData.username]
@@ -235,6 +234,7 @@ export const AuthProvider = ({ children }) => {
         } catch (err) {
           console.log('❌ Ошибка загрузки галочек при логине:', err.message);
         }
+          */
 
         // Запускаем фоновое обновление контента
         syncProgress(userData.username);

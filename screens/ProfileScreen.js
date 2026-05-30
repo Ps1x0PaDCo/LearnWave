@@ -26,7 +26,7 @@ const {
   getCompletedTopics, getAchievements, user, deleteUserAccount // <-- ДОБАВИЛИ СЮДА!
 } = useContext(AuthContext);
 
-  
+  const { level, xpInCurrentLevel, progress, xpRemaining, xpPerLevel } = calculateLevel(user?.balance || 0);
   const colors = getThemeColors(isDarkMode);
   const [selectedAvatar, setSelectedAvatar] = useState('🦉');
   const [stats, setStats] = useState({ completed: [], awards: [] });
@@ -149,6 +149,34 @@ const {
               </Text>
             </View>
           )}
+          
+{/* === 📊 ДИНАМИЧЕСКИЙ ПРОГРЕСС-БАР УРОВНЯ ДЛЯ ДИПЛОМА === */}
+          <View style={{ width: '100%', marginTop: 15, marginBottom: 5, paddingHorizontal: 4 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              {/* Бейдж текущего уровня */}
+              <View style={{ backgroundColor: colors.primary + '15', paddingHorizontal: 10, paddingVertical: 3, borderRadius: 12, borderWidth: 1, borderColor: colors.primary + '30' }}>
+                <Text style={{ fontSize: 11, fontWeight: '800', color: colors.primary, letterSpacing: 0.5 }}>
+                  {level} УРОВЕНЬ
+                </Text>
+              </View>
+              {/* Текстовый счетчик опыта */}
+              <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textPrimary }}>
+                {xpInCurrentLevel} / {xpPerLevel} XP
+              </Text>
+            </View>
+            
+            {/* Трек (фон) полосы прогресса */}
+            <View style={{ height: 10, backgroundColor: colors.border, borderRadius: 5, overflow: 'hidden', marginBottom: 6 }}>
+              {/* Заполненная часть полосы (ширина вычисляется динамически от 0% до 100%) */}
+              <View style={{ height: '100%', backgroundColor: colors.primary, borderRadius: 5, width: `${progress * 100}%` }} />
+            </View>
+            
+            {/* Подсказка об остатке */}
+            <Text style={{ fontSize: 11, color: colors.textMuted, textAlign: 'right', fontStyle: 'italic' }}>
+              Осталось {xpRemaining} XP до следующего уровня
+            </Text>
+          </View>
+{/* === КОНЕЦ ВСТАВКИ ПРОГРЕСС-БАРА === */}
 
           <Text style={[styles.avatarDesc, { color: colors.textMuted }]}>{AVATAR_DATA[selectedAvatar]?.desc}</Text>
           
