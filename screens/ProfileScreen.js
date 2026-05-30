@@ -1,7 +1,7 @@
 import React, { useContext, useEffect, useState, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Alert,
-  ScrollView, Dimensions, StatusBar, Platform, ActivityIndicator, Modal, TextInput, Animated
+  ScrollView, Dimensions, StatusBar, Platform, ActivityIndicator, Modal, TextInput, Animated, Easing
 } from 'react-native';
 import { AuthContext } from '../context/AuthContext';
 import { getThemeColors } from '../styles/colors';
@@ -53,7 +53,7 @@ const ProfileScreen = ({ navigation }) => {
   const [avatarModalVisible, setAvatarModalVisible] = useState(false);
   const [borderModalVisible, setBorderModalVisible] = useState(false);
 
-    // 🌟 ЖЕСТКАЯ ФИКСАЦИЯ АНИМАЦИЙ В ПАМЯТИ (ИВТ-ОПТИМИЗАЦИЯ СВЯЗЕЙ)
+  // 🌟 ЖЕСТКАЯ ФИКСАЦИЯ АНИМАЦИЙ В ПАМЯТИ (ИВТ-ОПТИМИЗАЦИЯ СВЯЗЕЙ)
   const neonAnim = useRef(new Animated.Value(0.4)).current;
   const matrixScroll = useRef(new Animated.Value(0)).current;
 
@@ -66,15 +66,17 @@ const ProfileScreen = ({ navigation }) => {
       ])
     ).start();
 
-    // 2. 🟢 БЕСКОНЕЧНЫЙ ЦИКЛ ПАДЕНИЯ МАТРИЦЫ (Теперь она побежит со 100% гарантией!)
+    // 2. 🟢 БЕСКОНЕЧНЫЙ ЛИНЕЙНЫЙ ВОДОПАД МАТРИЦЫ (БЕЗ ЗАДЕРЖЕК И РЫВКОВ)
     Animated.loop(
       Animated.timing(matrixScroll, {
         toValue: 1,
-        duration: 2500, // Скорость водопада цифр
-        useNativeDriver: true, // GPU-ускорение (0% нагрузки на твой Realme GT)
+        duration: 1500, // Скорость бега цифр (можно сделать 1500, если нужно побыстрее)
+        easing: Easing.linear, // 🌟 УБИРАЕТ ЗАДЕРЖКУ: Скорость движения становится идеально равномерной!
+        useNativeDriver: true,
       })
     ).start();
-  }, [neonAnim, matrixScroll]);
+
+  }, [neonAnim, matrixScroll, activeBorder]);
 
 
 
@@ -187,13 +189,13 @@ const ProfileScreen = ({ navigation }) => {
         <View style={[styles.mainCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
 
           {/* 🖼️ Аватар с процедурно-генерируемой бегущей Матричной рамкой и Неоном */}
-          <TouchableOpacity 
+          <TouchableOpacity
             activeOpacity={0.9}
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               setAvatarModalVisible(true); // Открываем модалку талисманов по тапу на сову
             }}
-            style={{ width: 130, height: 130, justifyContent: 'center', alignItems: 'center', marginBottom: 15, alignSelf: 'center' }}
+            style={{ width: 140, height: 140, justifyContent: 'center', alignItems: 'center', marginBottom: 15, alignSelf: 'center' }}
           >
             {/* 💡 СЛОЙ 1: АНИМИРОВАННЫЙ НЕОН (Твой сочный, пульсирующий неон) */}
             {activeBorder === 'neon' && (
@@ -215,72 +217,93 @@ const ProfileScreen = ({ navigation }) => {
               }} />
             )}
 
-            {/* 💡 СЛОЙ 1.5: 🟢 БЕГУЩИЙ ЦИФРОВОЙ КОД МАТРИЦЫ (ПОЛНОСТЬЮ ИСПРАВЛЕН!) */}
+            {/* 💡 СЛОЙ 1.5: 🟢 БЕГУЩИЙ ЦИФРОВОЙ КОД МАТРИЦЫ (БЕСШОВНЫЙ ЦИКЛ БЕЗ ЗАДЕРЖЕК) */}
             {activeBorder === 'matrix' && (
-              <View style={{
-                position: 'absolute',
-                width: 124,
-                height: 124,
-                borderRadius: 62,
-                borderWidth: 6, // 6 пикселей для идеальной видимости цифр
-                borderColor: '#002200', 
-                backgroundColor: '#000',
-                overflow: 'hidden', 
-                zIndex: 1,
-                shadowColor: '#00FF41',
-                shadowOffset: { width: 0, height: 0 },
-                shadowOpacity: 1,
-                shadowRadius: 12,
-                elevation: 10, // Сочное зелёное свечение наружу
-              }}>
-                {/* Анимированный водопад бинарного кода */}
-                <Animated.View style={{
-                  width: '100%',
-                  height: '200%', 
+              <>
+                {/* А) ТЕНЬ СВЕЧЕНИЯ */}
+                <View style={{
                   position: 'absolute',
-                  alignItems: 'center',
-                  justifyContent: 'space-around',
-                  transform: [{
-                    translateY: matrixScroll.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [0, -140] // Увеличили сдвиг, чтобы поток летел быстрее и бесшовнее
-                    })
-                  }]
-                }}>
-                  {/* Плотная и сверхконтрастная матричная сетка */}
-                  <Text style={{ 
-                    color: '#00FF41', 
-                    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', 
-                    fontSize: 11, 
-                    fontWeight: '900', 
-                    lineHeight: 10, 
-                    textAlign: 'center',
-                    letterSpacing: 1,
-                    opacity: 0.95
-                  }}>
-                    10101010{"\n"}01010101{"\n"}11001100{"\n"}00110011{"\n"}10101010{"\n"}01010101{"\n"}11001100{"\n"}00110011{"\n"}10101010{"\n"}01010101{"\n"}11001100{"\n"}00110011{"\n"}10101010{"\n"}01010101
-                  </Text>
-                </Animated.View>
-              </View>
-            )}
+                  width: 122,
+                  height: 122,
+                  borderRadius: 61,
+                  backgroundColor: '#00FF41',
+                  shadowColor: '#00FF41',
+                  shadowOffset: { width: 0, height: 0 },
+                  shadowOpacity: 0.9,
+                  shadowRadius: 12,
+                  elevation: 10,
+                  zIndex: 1,
+                }} />
 
-            {/* 💡 СЛОЙ 2: НЕПРОЗРАЧНЫЙ СТАТИЧНЫЙ АВАТАР (Защищает сову) */}
+                {/* Б) АНИМИРОВАННЫЙ ВОДОПАД СИМВОЛОВ */}
+                <View style={{
+                  position: 'absolute',
+                  width: 126,
+                  height: 126,
+                  borderRadius: 63,
+                  backgroundColor: '#000',
+                  overflow: 'hidden',
+                  zIndex: 2,
+                }}>
+                  <Animated.View style={{
+                    width: '100%',
+                    height: '200%',
+                    position: 'absolute',
+                    alignItems: 'center',
+                    justifyContent: 'flex-start', // Выравнивание строго по верхнему краю для точного шага сдвига
+                    transform: [{
+                      translateY: matrixScroll.interpolate({
+                        inputRange: [0, 1],
+                        // 💡 ИСПРАВЛЕНО: Сдвиг настроен ровно на высоту половины текстового массива (бесшовный стык)
+                        outputRange: [0, -130]
+                      })
+                    }]
+                  }}>
+                    {/* 🌟 ДВА АБСОЛЮТНО ИДЕНТИЧНЫХ БЛОКА СИМВОЛОВ ДЛЯ ИЛЛЮЗИИ БЕСКОНЕЧНОСТИ */}
+                    <Text style={{
+                      color: '#00FF41',
+                      fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+                      fontSize: 14,
+                      fontWeight: '900',
+                      textAlign: 'center',
+                      letterSpacing: 4,
+                      lineHeight: 13,
+                    }}>
+                      101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010
+                    </Text>
+                    {/* Дублирующий блок */}
+                    <Text style={{
+                      color: '#00FF41',
+                      fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+                      fontSize: 14,
+                      fontWeight: '900',
+                      textAlign: 'center',
+                      letterSpacing: 4,
+                      lineHeight: 13,
+                    }}>
+                      101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010
+                    </Text>
+                  </Animated.View>
+                </View>
+              </>
+            )}
+            {/* 💡 СЛОЙ 2: НЕПРОЗРАЧНЫЙ СТАТИЧНЫЙ АВАТАР (Перекрывает центр) */}
             <View style={{
               position: 'absolute',
               width: 110,
               height: 110,
               borderRadius: 55,
-              backgroundColor: colors.surface, 
+              backgroundColor: colors.surface,
               justifyContent: 'center',
               alignItems: 'center',
-              zIndex: 2, 
+              zIndex: 3, // 🌟 ПОВЫСИЛИ ДО 3: Теперь аватар гарантированно перекроет середину бегущего кода!
             }}>
               <Text style={[styles.bigEmoji, { marginBottom: 0, fontSize: 62, textAlign: 'center' }]}>
                 {selectedAvatar}
               </Text>
             </View>
 
-            {/* СТАТИЧНЫЕ МАТЕРИАЛЬНЫЕ РАМКИ (Бронза, Золото, Платина) */}
+            {/* СТАТИЧНЫЕ МАТЕРИАЛЬНЫЕ РАМКИ (Бронза, Золото, ... ) */}
             {(activeBorder === 'bronze' || activeBorder === 'gold' || activeBorder === 'platinum') && (
               <View style={{
                 position: 'absolute',
@@ -290,12 +313,14 @@ const ProfileScreen = ({ navigation }) => {
                 borderWidth: 4,
                 borderColor: activeBorder === 'bronze' ? '#CD7F32' : activeBorder === 'gold' ? '#FFD700' : '#E5E4E2',
                 backgroundColor: 'transparent',
-                zIndex: 3,
+                zIndex: 4, // Поверх всего
               }} />
             )}
 
           </TouchableOpacity>
           {/* 🖼️ КОНЕЦ Аватар с динамической рамкой кастомизации интерфейса */}
+
+
 
 
 
@@ -374,13 +399,13 @@ const ProfileScreen = ({ navigation }) => {
                   size={16}
                   color={activeBorder === 'none' ? colors.textMuted : activeBorder === 'bronze' ? '#CD7F32' : activeBorder === 'gold' ? '#FFD700' : '#FF0055'}
                 />
-<Text style={{ fontSize: 13, fontWeight: '700', color: colors.textPrimary }}>
-  {/* 💡 Динамически пишем название абсолютно любой выбранной рамки! */}
-  {activeBorder === 'none' ? 'Без рамки' : 
-   activeBorder === 'bronze' ? 'Бронза' : 
-   activeBorder === 'gold' ? 'Золото' : 
-   activeBorder === 'platinum' ? 'Платина' : 'Матрица'}
-</Text>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textPrimary }}>
+                  {/* 💡 Динамически пишем название абсолютно любой выбранной рамки! */}
+                  {activeBorder === 'none' ? 'Без рамки' :
+                    activeBorder === 'bronze' ? 'Бронза' :
+                      activeBorder === 'gold' ? 'Золото' :
+                        activeBorder === 'platinum' ? 'Платина' : 'Матрица'}
+                </Text>
 
               </View>
               <Ionicons name="chevron-down" size={14} color={colors.textMuted} />
