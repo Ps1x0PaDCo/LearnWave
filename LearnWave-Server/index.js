@@ -170,6 +170,7 @@ app.post('/api/login', async (req, res) => {
       token,
       user: {
         username: user.username,
+        email: user.email,
         role: user.role || 'student',
         balance: user.balance || 0,
         streak_count: newStreak // ??
@@ -336,7 +337,7 @@ app.post('/api/user-delete-account', authMiddleware, async (req, res) => {
   console.log('\n--- [BACKEND: DELETE ACCOUNT STARTED] ---');
 
   const { password } = req.body;
-  const userId = req.user?.id;
+  const userId = req.user?.id; // Извлекаем ID из токена через middleware
 
   if (!userId) {
     console.log('? Error: userId is missing in token');
@@ -350,6 +351,8 @@ app.post('/api/user-delete-account', authMiddleware, async (req, res) => {
 
   try {
     console.log(`?? Searching for user ID: ${userId} in PostgreSQL...`);
+    
+    // Используем pool.query и ищем строго по идентификатору id
     const userResult = await pool.query('SELECT * FROM users WHERE id = $1', [userId]);
 
     if (userResult.rows.length === 0) {
@@ -358,10 +361,11 @@ app.post('/api/user-delete-account', authMiddleware, async (req, res) => {
     }
 
     const currentUser = userResult.rows[0];
-    console.log(`?? User found: ${currentUser.username || 'No Name'} (${currentUser.email})`);
+    console.log(`? User found: ${currentUser.username || 'No Name'} (${currentUser.email})`);
 
     console.log('?? Verifying password hash via bcrypt...');
-    const isMatch = await bcrypt.compare(password, currentUser.password);
+    // Проверяем поле хэша пароля (поддерживаем оба варианта именования колонки в БД)
+    const isMatch = await bcrypt.compare(password, currentUser.password_hash || currentUser.password);
     if (!isMatch) {
       console.log('? Error: Provided password does not match.');
       return res.status(400).json({ success: false, error: 'Неверный пароль.' });
@@ -371,14 +375,16 @@ app.post('/api/user-delete-account', authMiddleware, async (req, res) => {
     await pool.query('BEGIN');
 
     try {
-      console.log('?? Deleting user progress from "progress" table...');
-      await pool.query('DELETE FROM progress WHERE user_id = $1', [userId]);
+      console.log('??? Deleting user progress from "user_progress" table...');
+      // Каскадно удаляем прогресс из таблицы user_progress по внешнему ключу
+      await pool.query('DELETE FROM user_progress WHERE user_id = $1', [userId]);
 
-      console.log('?? Deleting user record from "users" table...');
+      console.log('??? Deleting user record from "users" table...');
+      // Удаляем саму учетную запись
       await pool.query('DELETE FROM users WHERE id = $1', [userId]);
 
       await pool.query('COMMIT');
-      console.log(`? [SUCCESS]: User ID ${userId} deleted successfully.`);
+      console.log(`?? [SUCCESS]: User ID ${userId} deleted successfully.`);
       console.log('-----------------------------------------\n');
       return res.json({ success: true });
 
@@ -389,10 +395,12 @@ app.post('/api/user-delete-account', authMiddleware, async (req, res) => {
     }
 
   } catch (err) {
-    console.error('? [CRITICAL ROUTE ERROR]:', err.message);
+    console.error('?? [CRITICAL ROUTE ERROR]:', err.message);
     return res.status(500).json({ success: false, error: 'Внутренняя ошибка сервера.' });
   }
 });
+
+
 
 // ==========================================
 // АДМИНКА 2.0 & RBAC (НОВЫЕ ЭНДПОИНТЫ)

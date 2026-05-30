@@ -8,6 +8,7 @@ import { dbService } from '../services/database';
 import { db } from '../services/db';
 import { DeviceEventEmitter } from 'react-native';
 import { API_URL } from '../config';
+import { Platform } from 'react-native';
 
 export const AuthContext = createContext();
 export const CoursesContext = createContext();
@@ -19,6 +20,50 @@ export const AuthProvider = ({ children }) => {
   const [streak, setStreak] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [completedCourses, setCompletedCourses] = useState([]);
+  
+  const [activeBorder, setActiveBorder] = useState('none'); // Текущая рамка ('none', 'bronze', 'silver', 'gold')
+  // 💡 Метод для транзакционного списания монет при покупке кастомизации
+    // 💡 Метод для транзакционного списания монет при покупке кастомизации
+  const buyInterfaceBorder = async (borderId, cost) => {
+    if (!user || user.balance < cost) {
+      return { success: false, error: 'Недостаточно монет на балансе' };
+    }
+
+    try { // 🟢 Главный КОРНЕВОЙ блок try
+      // 1. Списываем монеты на сервере PostgreSQL (через apiClient)
+      const newBalance = user.balance - cost;
+      const response = await apiClient.post('/api/user/update-balance', { 
+        username: user.username, 
+        balance: newBalance 
+      });
+
+      if (response.data.success) {
+        // 2. Обновляем локальный стейт пользователя
+        setUser(prev => prev ? { ...prev, balance: newBalance } : null);
+        
+        // 3. Сохраняем купленную рамку в память Android устройства
+        setActiveBorder(borderId);
+        await AsyncStorage.setItem(`border_${user.username}`, borderId);
+        
+        // 4. ИЗОЛИРОВАННОЕ ОБНОВЛЕНИЕ КЭША SQLite
+        try { // 🟢 Вложенный блок try
+          db.runSync(
+            'UPDATE users SET balance = ? WHERE username = ?;',
+            [newBalance, user.username]
+          );
+        } catch (sqliteErr) { // 🔴 Вложенный блок catch
+          console.log('⚠️ [SQLite Shop Cache Error Ignored]:', sqliteErr.message);
+        }
+
+        return { success: true };
+      }
+      return { success: false, error: 'Сервер отклонил транзакцию' };
+
+    } catch (err) { // 🔴 Главный КОРНЕВОЙ блок catch (который потерялся!)
+      console.log('❌ Ошибка транзакции магазина:', err.message);
+      return { success: false, error: 'Ошибка сетевого соединения с сервером' };
+    }
+  }; // Конец функции
 
   // Состояния для всплывающего Pop-up уведомления достижений
   const [achievementModal, setAchievementModal] = useState(false);
@@ -143,28 +188,28 @@ export const AuthProvider = ({ children }) => {
         if (token) {
           const res = await apiClient.get('/api/profile').catch(() => null);
 
-          if (res?.data?.success && res.data.user && res.data.user.length > 0) {
-            const fetchedUser = res.data.user[0]; // 💡 Получили чистый объект
-            setUser(fetchedUser);
-            setIsLoggedIn(true);
-            setStreak(fetchedUser.streak_count || 0);
-            await syncProgress(fetchedUser.username);
-
-            try {
-              const done = db.getAllSync(
-                "SELECT topic_key FROM user_progress WHERE username = ? AND status = 'completed'",
-                // 🔥 ИСПРАВЛЕНО ТУТ: было [fetchedUser[0].username], убран лишний [0]
-                [fetchedUser.username]
-              );
-              setCompletedCourses(done.map(row => row.topic_key));
-            } catch (err) {
-              console.log('❌ Ошибка загрузки галочек при старте:', err.message);
-            }
-
-          } else {
-            await SecureStore.deleteItemAsync('user_token');
-          }
+    if (res?.data?.success && res.data.user && res.data.user.length > 0) {
+      const fetchedUser = res.data.user[0]; // Наш чистый объект юзера
+      
+      setUser(fetchedUser);
+      setIsLoggedIn(true);
+      setStreak(fetchedUser.streak_count || 0);
+      
+      // 💡 ИСПРАВЛЕНО: Фоновые SQLite-методы запускаем ТОЛЬКО на смартфонах, в Web-версии пропускаем!
+      if (Platform.OS !== 'web') {
+        await syncProgress(fetchedUser.username);
+        try {
+          const done = db.getAllSync(
+            "SELECT topic_key FROM user_progress WHERE username = ? AND status = 'completed'",
+            [fetchedUser.username]
+          );
+          setCompletedCourses(done.map(row => row.topic_key));
+        } catch (err) {
+          console.log('❌ Ошибка загрузки галочек при старте:', err.message);
         }
+      }
+    }
+  }
 
         // 💡 ИСПРАВЛЕНО: Слушаем событие разлогина из api.js внутри тела хука useEffect!
         const subscription = DeviceEventEmitter.addListener('FORCE_LOGOUT', () => {
@@ -354,7 +399,8 @@ export const AuthProvider = ({ children }) => {
     <AuthContext.Provider value={{
       user, isLoggedIn, isDarkMode, streak, isLoading,
       nickname: user?.username, userRole: user?.role, calculateLevel,
-      login, register, logout, deleteUserAccount, completedCourses, setCompletedCourses,
+      login, register, logout, deleteUserAccount,
+       completedCourses, setCompletedCourses, activeBorder, setActiveBorder,
       toggleTheme: async () => {
         const n = !isDarkMode; setIsDarkMode(n);
         await AsyncStorage.setItem('user_theme', n ? 'dark' : 'light');

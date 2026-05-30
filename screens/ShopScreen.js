@@ -53,11 +53,20 @@ const ShopScreen = ({ navigation }) => {
             if (res.data.success) {
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-                // 💡 ОБНОВЛЯЕМ БАЛАНС НА КЛИЕНТЕ: Меняем монеты в контексте без перезапуска приложения!
+                // ОБНОВЛЯЕМ БАЛАНС НА КЛИЕНТЕ: Меняем монеты в контексте
                 setUser(prev => prev ? { ...prev, balance: res.data.newBalance } : null);
+
+                // 🔽 ВСТАВЬ ЭТОТ БЛОК ДЛЯ КАСКАДНОГО СОХРАНЕНИЯ РАМОК В ANDROID:
+                if (item.type === 'frame' && user?.username) {
+                    // Переводим id товара в короткий ключ для стилей профиля
+                    const borderId = item.id.replace('frame_', ''); // 'bronze', 'gold', 'neon'
+                    await AsyncStorage.setItem(`border_${user.username}`, borderId);
+                }
+                // 🔼 КОНЕЦ ВСТАВКИ
 
                 Alert.alert('Ура! 🎉', `${item.title} успешно приобретен(а)!`);
             }
+
         } catch (err) {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
             Alert.alert('Ошибка', err.response?.data?.error || 'Не удалось связаться с сервером.');

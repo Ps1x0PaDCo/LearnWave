@@ -1,7 +1,7 @@
 import React, { useContext, useEffect, useState } from 'react';
-import { 
-  View, Text, StyleSheet, TouchableOpacity, Alert, 
-  ScrollView, Dimensions, StatusBar, Platform, ActivityIndicator, Modal, TextInput 
+import {
+  View, Text, StyleSheet, TouchableOpacity, Alert,
+  ScrollView, Dimensions, StatusBar, Platform, ActivityIndicator, Modal, TextInput
 } from 'react-native';
 import { AuthContext } from '../context/AuthContext';
 import { getThemeColors } from '../styles/colors';
@@ -21,24 +21,37 @@ const AVATAR_DATA = {
 };
 
 const ProfileScreen = ({ navigation }) => {
-const { 
-  nickname, isDarkMode, toggleTheme, logout, updateUserName,
-  getCompletedTopics, getAchievements, user, deleteUserAccount // <-- ДОБАВИЛИ СЮДА!
-} = useContext(AuthContext);
+  const {
+    nickname, isDarkMode, toggleTheme, logout, updateUserName,
+    getCompletedTopics, getAchievements, user,
+    deleteUserAccount, calculateLevel, activeBorder,
+    setActiveBorder, buyInterfaceBorder,
+  } = useContext(AuthContext);
 
   const { level, xpInCurrentLevel, progress, xpRemaining, xpPerLevel } = calculateLevel(user?.balance || 0);
+
   const colors = getThemeColors(isDarkMode);
   const [selectedAvatar, setSelectedAvatar] = useState('🦉');
   const [stats, setStats] = useState({ completed: [], awards: [] });
   const [loading, setLoading] = useState(false);
-    // Состояния для модалки безопасного удаления аккаунта
+  // Состояния для модалки безопасного удаления аккаунта
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [confirmPassword, setConfirmPassword] = useState('');
 
+  useEffect(() => {
+    const loadSavedBorder = async () => {
+      if (nickname) {
+        const savedBorder = await AsyncStorage.getItem(`border_${nickname}`);
+        if (savedBorder) setActiveBorder(savedBorder);
+      }
+    };
+    loadSavedBorder();
+  }, [nickname]);
 
   // Состояния для модалки редактирования
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [tempNickname, setTempNickname] = useState('');
+
 
   useEffect(() => {
     const refreshData = async () => {
@@ -92,7 +105,7 @@ const {
     try {
       // Вызываем наш безопасный метод из AuthContext
       const result = await deleteUserAccount(passwordToSend);
-      
+
       if (result && result.success) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
         setDeleteModalVisible(false);
@@ -119,7 +132,7 @@ const {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
-      
+
       <View style={[styles.nav, { paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight + 10 : 20 }]}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="chevron-back" size={28} color={colors.textPrimary} />
@@ -132,26 +145,46 @@ const {
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
         <View style={[styles.mainCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Text style={styles.bigEmoji}>{selectedAvatar}</Text>
-          
+
+          {/* 🖼️ Аватар с динамической рамкой из Wave-Shop */}
+          <View style={{
+            width: 120,
+            height: 120,
+            borderRadius: 60,
+            borderWidth: (!activeBorder || activeBorder === 'none') ? 0 : 4,
+            // 💡 Синхронизировали рамки с товарами из Wave-Shop:
+            borderColor: activeBorder === 'bronze' ? '#CD7F32' : activeBorder === 'gold' ? '#FFD700' : '#FF007F',
+            justifyContent: 'center',
+            alignItems: 'center',
+            marginBottom: 10,
+            backgroundColor: colors.background
+          }}>
+            <Text style={[styles.bigEmoji, { marginBottom: 0, fontSize: 65, textAlign: 'center' }]}>{selectedAvatar}</Text>
+          </View>
+          {/* 🖼️ КОНЕЦ Аватар с динамической рамкой кастомизации интерфейса */}
+
           <View style={styles.nameRow}>
             <Text style={[styles.userName, { color: colors.textPrimary }]}>{nickname}</Text>
             <TouchableOpacity onPress={() => setEditModalVisible(true)} style={styles.editBtn}>
               <Ionicons name="create-outline" size={22} color={colors.primary} />
             </TouchableOpacity>
           </View>
-{/* === ОТОБРАЖЕНИЕ EMAIL ИЗ POSTGRESQL === */}
+
+          {/* === 📧 ОТОБРАЖЕНИЕ НАСТОЯЩЕЙ ПОЧТЫ ИЗ POSTGRESQL === */}
           {user?.email && (
-            <View style={[styles.emailBadge, { backgroundColor: colors.background + '80', borderColor: colors.border }]}>
+            <View style={[styles.emailBadge, { backgroundColor: colors.background + '80', borderColor: colors.border, marginVertical: 8 }]}>
               <Ionicons name="mail-outline" size={13} color={colors.textMuted} style={{ marginRight: 6 }} />
               <Text style={[styles.emailText, { color: colors.textMuted }]}>
                 {user.email}
               </Text>
             </View>
           )}
-          
-{/* === 📊 ДИНАМИЧЕСКИЙ ПРОГРЕСС-БАР УРОВНЯ ДЛЯ ДИПЛОМА === */}
+
+
+
+          {/* === 📊 ДИНАМИЧЕСКИЙ ПРОГРЕСС-БАР УРОВНЯ ДЛЯ ДИПЛОМА === */}
           <View style={{ width: '100%', marginTop: 15, marginBottom: 5, paddingHorizontal: 4 }}>
+
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
               {/* Бейдж текущего уровня */}
               <View style={{ backgroundColor: colors.primary + '15', paddingHorizontal: 10, paddingVertical: 3, borderRadius: 12, borderWidth: 1, borderColor: colors.primary + '30' }}>
@@ -164,22 +197,22 @@ const {
                 {xpInCurrentLevel} / {xpPerLevel} XP
               </Text>
             </View>
-            
+
             {/* Трек (фон) полосы прогресса */}
             <View style={{ height: 10, backgroundColor: colors.border, borderRadius: 5, overflow: 'hidden', marginBottom: 6 }}>
               {/* Заполненная часть полосы (ширина вычисляется динамически от 0% до 100%) */}
               <View style={{ height: '100%', backgroundColor: colors.primary, borderRadius: 5, width: `${progress * 100}%` }} />
             </View>
-            
+
             {/* Подсказка об остатке */}
             <Text style={{ fontSize: 11, color: colors.textMuted, textAlign: 'right', fontStyle: 'italic' }}>
               Осталось {xpRemaining} XP до следующего уровня
             </Text>
           </View>
-{/* === КОНЕЦ ВСТАВКИ ПРОГРЕСС-БАРА === */}
+          {/* === КОНЕЦ ВСТАВКИ ПРОГРЕСС-БАРА === */}
 
           <Text style={[styles.avatarDesc, { color: colors.textMuted }]}>{AVATAR_DATA[selectedAvatar]?.desc}</Text>
-          
+
           <View style={[styles.quickStats, { borderTopColor: colors.border }]}>
             <View style={styles.statMini}>
               <Text style={[styles.statNum, { color: colors.primary }]}>{stats.completed.length}</Text>
@@ -193,7 +226,7 @@ const {
           </View>
         </View>
 
-        <TouchableOpacity 
+        <TouchableOpacity
           style={[styles.achBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
           onPress={() => navigation.navigate('Achievements')}
         >
@@ -204,10 +237,10 @@ const {
         <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Выбор талисмана</Text>
         <View style={styles.avatarGrid}>
           {Object.keys(AVATAR_DATA).map(emoji => (
-            <TouchableOpacity 
-              key={emoji} 
+            <TouchableOpacity
+              key={emoji}
               onPress={() => changeAvatar(emoji)}
-              style={[styles.avatarBtn, { 
+              style={[styles.avatarBtn, {
                 backgroundColor: selectedAvatar === emoji ? colors.primary + '15' : colors.surface,
                 borderColor: selectedAvatar === emoji ? colors.primary : colors.border
               }]}
@@ -217,18 +250,18 @@ const {
           ))}
         </View>
 
-                {/* КНОПКИ УПРАВЛЕНИЯ СЕССИЕЙ И АККАУНТОМ */}
+        {/* КНОПКИ УПРАВЛЕНИЯ СЕССИЕЙ И АККАУНТОМ */}
         <View style={{ gap: 10, marginTop: 10 }}>
-          <TouchableOpacity 
-            style={[styles.logoutBtn, { borderColor: colors.border, backgroundColor: colors.surface }]} 
+          <TouchableOpacity
+            style={[styles.logoutBtn, { borderColor: colors.border, backgroundColor: colors.surface }]}
             onPress={logout}
           >
             <Ionicons name="log-out-outline" size={20} color={colors.textPrimary} />
             <Text style={[styles.logoutText, { color: colors.textPrimary }]}>Выйти из аккаунта</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity 
-            style={[styles.logoutBtn, { borderColor: '#FF5E5E', backgroundColor: colors.surface }]} 
+          <TouchableOpacity
+            style={[styles.logoutBtn, { borderColor: '#FF5E5E', backgroundColor: colors.surface }]}
             onPress={() => setDeleteModalVisible(true)}
           >
             <Ionicons name="trash-outline" size={20} color="#FF5E5E" />
@@ -245,17 +278,17 @@ const {
               <Ionicons name="warning" size={24} color="#FF5E5E" style={{ marginRight: 10 }} />
               <Text style={[styles.modalT, { color: '#FF5E5E', marginBottom: 0 }]}>Удаление профиля</Text>
             </View>
-            
+
             <Text style={{ color: colors.textMuted, fontSize: 13, marginBottom: 20, lineHeight: 18 }}>
-              Это действие полностью сотрет ваш прогресс лекций и достижения из PostgreSQL и SQLite без возможности восстановления. Введите текущий пароль:
+              Это действие полностью сотрет ваш прогресс лекций и достижения без возможности восстановления. Введите текущий пароль:
             </Text>
 
-            <TextInput 
-              style={[styles.mInput, { borderColor: '#FF5E5E', color: colors.textPrimary }]} 
-              placeholder="Ваш пароль" 
-              placeholderTextColor={colors.textMuted} 
+            <TextInput
+              style={[styles.mInput, { borderColor: '#FF5E5E', color: colors.textPrimary }]}
+              placeholder="Ваш пароль"
+              placeholderTextColor={colors.textMuted}
               secureTextEntry={true}
-              value={confirmPassword} 
+              value={confirmPassword}
               onChangeText={setConfirmPassword}
               autoFocus={true}
             />
@@ -282,11 +315,11 @@ const {
         <View style={styles.modalOverlay}>
           <View style={[styles.modalBox, { backgroundColor: colors.surface }]}>
             <Text style={[styles.modalT, { color: colors.textPrimary }]}>Изменить имя</Text>
-            <TextInput 
-              style={[styles.mInput, { borderColor: colors.border, color: colors.textPrimary }]} 
-              placeholder="Новый никнейм" 
-              placeholderTextColor={colors.textMuted} 
-              value={tempNickname} 
+            <TextInput
+              style={[styles.mInput, { borderColor: colors.border, color: colors.textPrimary }]}
+              placeholder="Новый никнейм"
+              placeholderTextColor={colors.textMuted}
+              value={tempNickname}
               onChangeText={setTempNickname}
               autoFocus={true}
             />
