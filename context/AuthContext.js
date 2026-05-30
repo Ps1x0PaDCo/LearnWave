@@ -7,6 +7,7 @@ import apiClient, { profileService } from '../services/api';
 import { dbService } from '../services/database';
 import { db } from '../services/db';
 import { DeviceEventEmitter } from 'react-native';
+import { API_URL } from '../config';
 
 export const AuthContext = createContext();
 export const CoursesContext = createContext();
