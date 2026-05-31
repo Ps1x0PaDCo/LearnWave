@@ -11,18 +11,24 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Haptics from 'expo-haptics';
 
 const SubjectSelectionScreen = ({ route, navigation }) => {
-  const { subjectKey, subjectName } = route.params || { subjectKey: 'math', subjectName: 'Курс' };
+  // Вытаскиваем параметры навигации с дефолтными значениями на чистом русском языке
+  const { subjectKey, subjectName } = route.params || { 
+    subjectKey: 'math', 
+    subjectName: 'Курс обучения' 
+  };
+  
   const { isDarkMode } = useContext(AuthContext);
   const colors = getThemeColors(isDarkMode);
-
+  
   const [topicCount, setTopicCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const scaleAnim = useRef(new Animated.Value(0.9)).current;
 
-  // 💡 ИСПРАВЛЕНО: Безопасный маппинг иконок под разные типы предметов
+  // 💡 ИСПРАВЛЕНО: Безопасный маппинг иконок под все типы предметов, включая базовую математику
   const iconMap = {
     'math': 'calculator-outline',
     'advanced_math': 'calculator-outline',
+    'base_math': 'calculator-outline', // Добавили поддержку базовой математики
     'physics': 'flash-outline',
     'programming': 'code-working-outline',
     'python_dev': 'code-working-outline',
@@ -30,28 +36,37 @@ const SubjectSelectionScreen = ({ route, navigation }) => {
   };
 
   const current = {
-    title: subjectName || 'Выбор темы', // Больше никаких "math" в заголовке!
-    desc: `Изучение основ направления и практические задания`,
+    title: subjectName || 'Выбор темы',
+    desc: 'Изучение основ направления и практические интерактивные задания',
     icon: iconMap[subjectKey] || 'school-outline',
     color: colors.primary
   };
 
   useEffect(() => {
-    // Анимация «всплытия» карточки
-    Animated.spring(scaleAnim, { toValue: 1, friction: 4, useNativeDriver: true }).start();
+    // Красивая плавная анимация появления карточки предмета
+    Animated.spring(scaleAnim, { 
+      toValue: 1, 
+      friction: 4, 
+      useNativeDriver: true 
+    }).start();
 
     const fetchStats = () => {
       try {
-        // Запрос к локальной SQLite для подсчета тем по ключу предмета
-        const result = db.getFirstSync('SELECT COUNT(*) as count FROM topics WHERE subject_key = ?', [subjectKey]);
+        console.log(`📊 [SQLite] Подсчет локальных тем для ключа: ${subjectKey}`);
+        // Запрос к локальной SQLite для динамического подсчета тем предмета
+        const result = db.getFirstSync(
+          'SELECT COUNT(*) as count FROM topics WHERE subject_key = ?', 
+          [subjectKey]
+        );
         setTopicCount(result?.count || 0);
       } catch (e) {
-        console.log('❌ Ошибка SQLite при подсчете тем:', e.message);
+        console.log('❌ Ошибка SQLite при подсчете тем лекций:', e.message);
         setTopicCount(0);
       } finally {
         setLoading(false);
       }
     };
+    
     fetchStats();
   }, [subjectKey]);
 

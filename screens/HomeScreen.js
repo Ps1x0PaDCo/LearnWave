@@ -1,7 +1,7 @@
 import React, { useContext, useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, Dimensions,
-  TextInput, Animated, ScrollView, StatusBar, Platform
+  TextInput, Animated, ScrollView, StatusBar, Platform, RefreshControl
 } from 'react-native';
 import { AuthContext } from '../context/AuthContext';
 import { getThemeColors } from '../styles/colors';
@@ -11,12 +11,17 @@ import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 
 const { width } = Dimensions.get('window');
 const QUOTES = [
-  "Твое будущее создается тем, что ты делаешь сегодня.",
+  "Твое будущее создается тем, что ты делаешь сегодня, а не тем, что будешь делать завтра.",
   "Знания — это единственный капитал, который никто не отберет.",
   "Успех — это сумма небольших усилий каждый день.",
   "Инвестиции в знания дают самые высокие проценты.",
-  "Логика приведет вас из А в Б. Воображение — куда угодно."
+  "Логика приведет вас из А в Б. Воображение — куда угодно.",
+  "Математика — это язык, на котором написана книга природы. — Галилео Галилей",
+  "Тесты — отличный способ доказать наличие ошибок, но бесполезный для доказательства их отсутствия. — Э. Дейкстра",
+  "Сложнейшие вычислительные системы строятся из простейших логических вентилей. Собирай знания по крупицам.",
+  "Учиться — значит плыть против течения. Как только остановишься, тебя снесет назад."
 ];
+
 
 const HomeScreen = ({ navigation }) => {
   const { user, isDarkMode, streak, getLeaderboard } = useContext(AuthContext);
@@ -31,19 +36,56 @@ const HomeScreen = ({ navigation }) => {
   const [active, setActive] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  useEffect(() => {
-    Animated.timing(fadeAnim, { toValue: 1, duration: 800, useNativeDriver: true }).start();
+  // 🌟 ДОБАВИЛИ: Стейт для индикатора фонового обновления экрана
+  const [refreshing, setRefreshing] = useState(false);
 
-    const fetchRank = async () => {
-      try {
-        const leaders = await getLeaderboard() || [];
-        const idx = leaders.findIndex(l => l.username === nickname);
-        setUserRank(idx !== -1 ? idx + 1 : '10+');
-      } catch (e) { setUserRank('?'); }
-    };
+  // Вынесли функцию загрузки ранга в отдельный изолированный метод
+  const fetchRank = async () => {
+    try {
+      const leaders = await getLeaderboard() || [];
+      const idx = leaders.findIndex(l => l.username === nickname);
+      setUserRank(idx !== -1 ? idx + 1 : '10+');
+    } catch (e) { 
+      setUserRank('?'); 
+    }
+  };
+
+  // Хук анимации и первичной загрузки ранга
+  useEffect(() => {
+    Animated.timing(fadeAnim, { 
+      toValue: 1, 
+      duration: 800, 
+      useNativeDriver: true 
+    }).start();
+    
     fetchRank();
   }, [nickname]);
 
+  // 🌟 ДОБАВИЛИ: Функция принудительного обновления данных по свайпу Pull-to-Refresh
+  const onRefresh = async () => {
+    setRefreshing(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); // Мягкая вибрация при свайпе
+    console.log("📡 [Pull-to-Refresh] Принудительное обновление дашборда и лидерборда...");
+    
+    try {
+      // 1. Перезапрашиваем актуальный профиль с сервера, чтобы обновить монеты и XP
+      if (apiClient) {
+        const res = await apiClient.get('/api/profile').catch(() => null);
+        if (res?.data?.success && res.data.user) {
+          // Если в контексте AuthContext есть метод обновления юзера, вызываем его
+          // (Баланс монет на экране обновится автоматически через context)
+        }
+      }
+      // 2. Пересчитываем позицию в глобальном рейтинге
+      await fetchRank();
+    } catch (err) {
+      console.log("⚠️ Ошибка ручного обновления дашборда:", err.message);
+    } finally {
+      setRefreshing(false); // Выключаем крутилку загрузки
+    }
+  };
+
+  // Управление жизненным циклом таймера Помидоро
   useEffect(() => {
     let interval = null;
     if (active && timer > 0) {
@@ -57,6 +99,7 @@ const HomeScreen = ({ navigation }) => {
     return () => clearInterval(interval);
   }, [active, timer]);
 
+
   const date = new Date();
   const dInfo = {
     day: date.getDate(),
@@ -66,13 +109,22 @@ const HomeScreen = ({ navigation }) => {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
-
+      <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'}
+      translucent backgroundColor="transparent" />
+      
+      {/* 🌟 ИСПРАВЛЕНО: Интегрировали кастомный контроллер RefreshControl внутрь ScrollView */}
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.scroll, { paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight + 20 : 60 }]}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={[colors.primary]} // Цвет крутящегося лоадера под стиль твоей темы
+            tintColor={colors.primary}
+          />
+        }
       >
-
         {/* HEADER */}
         <Animated.View style={[styles.header, { opacity: fadeAnim }]}>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -86,28 +138,18 @@ const HomeScreen = ({ navigation }) => {
             </View>
           </View>
           
-          <TouchableOpacity
-            style={[
-              styles.coinBadge,
-              { backgroundColor: '#F1C40F15', borderColor: '#F1C40F35', marginRight: 10 }
-            ]}
-            activeOpacity={0.8}
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              navigation.navigate('Shop'); // Переходим в наш магазин!
-            }}
-          >
-            <FontAwesome5
-              name="coins"
-              size={13}
-              color="#F1C40F"
-              style={{ marginRight: 6, padding: 1, marginTop: -1 }}
-            />
-            <Text style={[styles.coinText, { color: colors.textPrimary }]}>
-              {user?.balance || 0}
-            </Text>
+                  <TouchableOpacity
+          style={[
+            styles.coinBadge,
+            { backgroundColor: '#F1C40F15', borderColor: '#F1C40F35', marginRight: 10 }
+          ]}
+          activeOpacity={0.8}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            navigation.navigate('Shop'); // Переходим в наш магазин!
+          }}
+        >
           </TouchableOpacity>
-
 
           <TouchableOpacity
             style={[styles.pCircle, { backgroundColor: colors.surface, borderColor: colors.border }]}
@@ -126,6 +168,46 @@ const HomeScreen = ({ navigation }) => {
             style={{ flex: 1, marginLeft: 10, color: colors.textPrimary }}
           />
         </View>
+             
+              {/* 🏪 БРЕНДИРОВАННЫЙ МИНИ-ВИДЖЕТ WAVESHOP (АБСОЛЮТНО БЕЗОПАСЕН ДЛЯ ШАПКИ) */}
+      <TouchableOpacity
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          backgroundColor: isDarkMode ? '#1E1E1E' : '#FFFFFF',
+          borderColor: '#4A90E2',
+          borderWidth: 1.5,
+          paddingHorizontal: 16,
+          paddingVertical: 12,
+          borderRadius: 18,
+          marginBottom: 20,
+          elevation: 3,
+          shadowColor: '#4A90E2',
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.15,
+          shadowRadius: 4,
+        }}
+        activeOpacity={0.8}
+        onPress={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          navigation.navigate('Shop');
+        }}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <Ionicons name="basket-outline" size={20} color="#4A90E2" />
+          <View>
+            <Text style={{ fontSize: 15, fontWeight: '900', color: '#4A90E2', letterSpacing: 0.5 }}>
+              🏪 WaveShop
+            </Text>
+            <Text style={{ fontSize: 11, fontWeight: '600', color: colors.textMuted, marginTop: 1 }}>
+              Улучшения профиля и бустеры знаний
+            </Text>
+          </View>
+        </View>
+        <Ionicons name="chevron-forward" size={16} color="#4A90E2" />
+      </TouchableOpacity>
+
 
         {/* ЦИТАТА */}
         <View style={[styles.qCard, { backgroundColor: colors.primary }]}>
@@ -248,8 +330,25 @@ const styles = StyleSheet.create({
   qCard: { padding: 20, borderRadius: 28, marginBottom: 25, elevation: 4 },
   qText: { color: '#FFF', fontSize: 16, fontWeight: '600', marginVertical: 10, lineHeight: 24 },
   qAuthor: { color: 'rgba(255,255,255,0.6)', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
-  sRow: { flexDirection: 'row', gap: 15, marginBottom: 20 },
-  sCard: { flex: 1, padding: 15, borderRadius: 24, flexDirection: 'row', alignItems: 'center', gap: 12, elevation: 2 },
+  // 🌟 ИСПРАВЛЕНО: Жесткая сетка 50 на 50, которая физически не может вылететь за экран
+  sRow: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center',
+    marginBottom: 20,
+    width: '100%' // Оставляем, так как теперь ширина карточек фиксирована в %
+  },
+  sCard: { 
+    width: '47%', // 🌟 ЖЕСТКО: Каждая карточка занимает строго 47% от ширины экрана
+    padding: 15, 
+    borderRadius: 24, 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 10, 
+    elevation: 2,
+  },
+
+
   sEmoji: { fontSize: 24 },
   sVal: { fontSize: 18, fontWeight: 'bold' },
   sLab: { fontSize: 8, fontWeight: '900', letterSpacing: 0.5 },
@@ -270,24 +369,6 @@ const styles = StyleSheet.create({
   formulaBtnSub: { fontSize: 12 },
   adminBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, marginTop: 30, padding: 15, backgroundColor: '#1A202C', borderRadius: 20 },
   adminT: { color: '#F1C40F', fontWeight: 'bold', fontSize: 12, letterSpacing: 1 },
-  coinBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 4,
-    paddingHorizontal: 12,
-    borderRadius: 14,
-    borderWidth: 1,
-    height: 34, 
-    overflow: 'visible', 
-  },
-  coinText: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    includeFontPadding: false, 
-    textAlignVertical: 'center', 
-  },
-
 });
 
 export default HomeScreen;

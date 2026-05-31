@@ -5,10 +5,10 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator, CardStyleInterpolators } from '@react-navigation/stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-// ИМПОРТ КОНТЕКСТА
+// РРњРџРћР Рў РљРћРќРўР•РљРЎРўРђ
 import { AuthProvider, AuthContext } from './context/AuthContext';
 
-// ИМПОРТ ВСЕХ ЭКРАНОВ ИЗ ОДНОЙ ТОЧКИ
+// РРњРџРћР Рў Р’РЎР•РҐ Р­РљР РђРќРћР’ РР— РћР”РќРћР™ РўРћР§РљР
 import {
   LoginScreen,
   RegisterScreen,
@@ -27,14 +27,14 @@ import {
   ShopScreen,
 } from './screens';
 
-// LogBox.ignoreLogs(['?? Сюда можно вписать конкретное варнинг-сообщение, которое нужно скрыть']);
+// LogBox.ignoreLogs(['?? РЎСЋРґР° РјРѕР¶РЅРѕ РІРїРёСЃР°С‚СЊ РєРѕРЅРєСЂРµС‚РЅРѕРµ РІР°СЂРЅРёРЅРі-СЃРѕРѕР±С‰РµРЅРёРµ, РєРѕС‚РѕСЂРѕРµ РЅСѓР¶РЅРѕ СЃРєСЂС‹С‚СЊ']);
 
 const Stack = createStackNavigator();
 
 const RootNavigation = () => {
   const { isLoggedIn, isLoading } = useContext(AuthContext);
 
-  // Исправлено: Вместо белого экрана показываем индикатор загрузки, пока проверяется сессия
+  // РСЃРїСЂР°РІР»РµРЅРѕ: Р’РјРµСЃС‚Рѕ Р±РµР»РѕРіРѕ СЌРєСЂР°РЅР° РїРѕРєР°Р·С‹РІР°РµРј РёРЅРґРёРєР°С‚РѕСЂ Р·Р°РіСЂСѓР·РєРё, РїРѕРєР° РїСЂРѕРІРµСЂСЏРµС‚СЃСЏ СЃРµСЃСЃРёСЏ
   if (isLoading) {
     return (
       <View style={styles.center}>
@@ -57,7 +57,7 @@ const RootNavigation = () => {
         </>
       ) : (
         <>
-          {/* Унифицированы названия роутов (убраны лишние суффиксы Screen) */}
+          {/* РЈРЅРёС„РёС†РёСЂРѕРІР°РЅС‹ РЅР°Р·РІР°РЅРёСЏ СЂРѕСѓС‚РѕРІ (СѓР±СЂР°РЅС‹ Р»РёС€РЅРёРµ СЃСѓС„С„РёРєСЃС‹ Screen) */}
           <Stack.Screen name="Home" component={HomeScreen} />
           <Stack.Screen name="Courses" component={CoursesScreen} />
           <Stack.Screen name="SubjectSelection" component={SubjectSelectionScreen} />

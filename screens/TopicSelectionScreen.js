@@ -62,11 +62,11 @@ const TopicSelectionScreen = ({ route, navigation }) => {
     );
   }
 
-  return (
+   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
       <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
-
-      {/* HEADER */}
+      
+      {/* 📋 ШАПКА ПРЕДМЕТА */}
       <View style={styles.header}>
         <TouchableOpacity
           style={[styles.backBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
@@ -85,64 +85,97 @@ const TopicSelectionScreen = ({ route, navigation }) => {
           Выберите тему лекции для проверки знаний и прохождения тестирования
         </Text>
 
-        {topics.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <Ionicons name="folder-open-outline" size={48} color={colors.textMuted} />
-            <Text style={[styles.emptyText, { color: colors.textMuted }]}>В данном курсе пока нет доступных тем.</Text>
-          </View>
-        ) : (
-          topics.map((item, index) => {
-            // 💡 ИСПРАВЛЕНО: Собираем оба формата ключей для надежной проверки
+        {/* 🌟 ДИНАМИЧЕСКИЙ ПРОГРЕСС-БАР КУРСА */}
+        {topics.length > 0 && (() => {
+          const completedInThisSubject = topics.filter(item => {
             const defaultKey = `topic_${item.id}`;
             const subjectKey = `${item.subject_key}_${item.id}`;
+            return completedCourses?.includes(defaultKey) || completedCourses?.includes(subjectKey);
+          }).length;
 
-            // Галочка загорится, если в массиве есть ХОТЯ БЫ ОДИН из этих вариантов!
-            const isCompleted = completedCourses?.includes(defaultKey) ||
-              completedCourses?.includes(subjectKey) ||
-              false;
+          const percentage = Math.round((completedInThisSubject / topics.length) * 100) || 0;
 
-            return (
-              <TouchableOpacity
-                key={item.id}
-                style={[
-                  styles.topicCard,
-                  {
-                    backgroundColor: colors.surface,
-                    borderColor: isCompleted ? '#2ECC71' : colors.border
-                  }
-                ]}
-                onPress={() => handleTopicPress(item)}
-                activeOpacity={0.8}
-              >
-                <View style={styles.cardHeader}>
-                  <View style={[styles.numberBadge, { backgroundColor: isCompleted ? '#2ECC7120' : colors.background }]}>
-                    <Text style={[styles.numberText, { color: isCompleted ? '#2ECC71' : colors.textPrimary }]}>
-                      {index + 1}
-                    </Text>
-                  </View>
+          return (
+            <View style={{
+              backgroundColor: colors.surface,
+              borderColor: colors.border,
+              borderWidth: 1,
+              borderRadius: 20,
+              padding: 16,
+              marginBottom: 20,
+              elevation: 2,
+              shadowColor: '#000',
+              shadowOpacity: 0.01,
+              shadowRadius: 4
+            }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <Text style={{ fontSize: 13, fontWeight: '800', color: colors.textPrimary, letterSpacing: 0.3 }}>
+                  📊 ИЗУЧЕНО МАТЕРИАЛА
+                </Text>
+                <Text style={{ fontSize: 14, fontWeight: '900', color: '#4A90E2' }}>
+                  {percentage}%
+                </Text>
+              </View>
 
-                  <View style={styles.titleContainer}>
-                    <Text style={[styles.topicTitle, { color: colors.textPrimary }]}>{item.title}</Text>
-                    <Text style={[styles.topicDesc, { color: colors.textMuted }]} numberOfLines={2}>
-                      {item.description || 'Описание темы синхронизировано с сервером'}
-                    </Text>
-                  </View>
+              {/* Задняя подложка трека прогресса */}
+              <View style={{ width: '100%', height: 8, backgroundColor: isDarkMode ? '#2D3748' : '#EDF2F7', borderRadius: 4, overflow: 'hidden' }}>
+                <View style={{ 
+                  width: `${percentage}%`, 
+                  height: '100%', 
+                  backgroundColor: '#4A90E2', 
+                  borderRadius: 4
+                }} />
+              </View>
+              <Text style={{ fontSize: 11, fontWeight: '600', color: colors.textMuted, marginTop: 8 }}>
+                Пройдено лекций: {completedInThisSubject} из {topics.length}
+              </Text>
+            </View>
+          );
+        })()}
 
-                  <View style={[
-                    styles.statusBox,
-                    { backgroundColor: isCompleted ? '#2ECC71' : colors.background }
-                  ]}>
-                    <Ionicons
-                      name={isCompleted ? "checkmark" : "chevron-forward"}
-                      size={16}
-                      color={isCompleted ? "#FFF" : colors.primary}
-                    />
-                  </View>
+        {/* 🌟 СПИСОК 10 ЛЕКЦИЙ С ГАЛОЧКАМИПРОХОЖДЕНИЯ */}
+        {topics.map((item, idx) => {
+          const defaultKey = `topic_${item.id}`;
+          const subjectKey = `${item.subject_key}_${item.id}`;
+          const isCompleted = completedCourses?.includes(defaultKey) || completedCourses?.includes(subjectKey) || false;
+
+          return (
+            <TouchableOpacity
+              key={item.id}
+              style={[styles.topicCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
+              onPress={() => handleTopicPress(item)}
+              activeOpacity={0.8}
+            >
+              <View style={styles.cardHeader}>
+                <View style={[styles.numberBadge, { backgroundColor: isDarkMode ? '#2D3748' : '#EDF2F7' }]}>
+                  <Text style={[styles.numberText, { color: colors.primary }]}>{idx + 1}</Text>
                 </View>
-              </TouchableOpacity>
-            );
-          })
-        )}
+
+                <View style={styles.titleContainer}>
+                  <Text style={[styles.topicTitle, { color: colors.textPrimary }]} numberOfLines={1}>
+                    {item.title}
+                  </Text>
+                  <Text style={[styles.topicDesc, { color: colors.textMuted }]} numberOfLines={2}>
+                    {item.description || 'Описание лекционного материала...'}
+                  </Text>
+                </View>
+
+                <View style={[styles.statusBox, { 
+                  backgroundColor: isCompleted ? '#2ECC7120' : (isDarkMode ? '#1A202C' : '#F7FAFC'),
+                  borderWidth: isCompleted ? 0 : 1,
+                  borderColor: colors.border
+                }]}>
+                  <Ionicons 
+                    name={isCompleted ? "checkmark-circle" : "book-outline"} 
+                    size={18} 
+                    color={isCompleted ? "#2ECC71" : colors.textMuted} 
+                  />
+                </View>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+
       </ScrollView>
     </SafeAreaView>
   );
@@ -166,3 +199,4 @@ const styles = StyleSheet.create({
 });
 
 export default TopicSelectionScreen;
+

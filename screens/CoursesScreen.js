@@ -38,13 +38,17 @@ const CoursesScreen = ({ navigation }) => {
   }, []);
 
   const handleSelect = (key, name) => {
-    if (!key) return; // Защита от пустых переходов
+    if (!key) return; 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    
+    console.log(`📱 [Navigation] Переход на визитку курса: ${name} (${key})`);
+    
     navigation.navigate('SubjectSelection', { 
       subjectKey: key, 
-      subjectName: name || 'Курс' 
+      subjectName: name || 'Курс обучения'
     });
   };
+
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>

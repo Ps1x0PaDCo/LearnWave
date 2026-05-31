@@ -20,10 +20,10 @@ export const AuthProvider = ({ children }) => {
   const [streak, setStreak] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [completedCourses, setCompletedCourses] = useState([]);
-  
+
   const [activeBorder, setActiveBorder] = useState('none'); // Текущая рамка ('none', 'bronze', 'silver', 'gold')
   // 💡 Метод для транзакционного списания монет при покупке кастомизации
-    // 💡 Метод для транзакционного списания монет при покупке кастомизации
+  // 💡 Метод для транзакционного списания монет при покупке кастомизации
   const buyInterfaceBorder = async (borderId, cost) => {
     if (!user || user.balance < cost) {
       return { success: false, error: 'Недостаточно монет на балансе' };
@@ -32,19 +32,19 @@ export const AuthProvider = ({ children }) => {
     try { // 🟢 Главный КОРНЕВОЙ блок try
       // 1. Списываем монеты на сервере PostgreSQL (через apiClient)
       const newBalance = user.balance - cost;
-      const response = await apiClient.post('/api/user/update-balance', { 
-        username: user.username, 
-        balance: newBalance 
+      const response = await apiClient.post('/api/user/update-balance', {
+        username: user.username,
+        balance: newBalance
       });
 
       if (response.data.success) {
         // 2. Обновляем локальный стейт пользователя
         setUser(prev => prev ? { ...prev, balance: newBalance } : null);
-        
+
         // 3. Сохраняем купленную рамку в память Android устройства
         setActiveBorder(borderId);
         await AsyncStorage.setItem(`border_${user.username}`, borderId);
-        
+
         // 4. ИЗОЛИРОВАННОЕ ОБНОВЛЕНИЕ КЭША SQLite
         try { // 🟢 Вложенный блок try
           db.runSync(
@@ -156,7 +156,7 @@ export const AuthProvider = ({ children }) => {
       if (res.data.success && res.data.categories) {
         // Очищаем старые курсы, чтобы избежать дубликатов при обновлении
         db.runSync('DELETE FROM courses');
-        
+
         // Разворачиваем сгруппированные категории и записываем курсы в SQLite
         res.data.categories.forEach(category => {
           if (category.subjects && Array.isArray(category.subjects)) {
@@ -182,10 +182,10 @@ export const AuthProvider = ({ children }) => {
       const res = await apiClient.get('/api/topics');
       if (res.data.success) {
         const cloudTopics = res.data.topics || [];
-        
+
         // Очищаем старые темы перед записью обновлений
         db.runSync('DELETE FROM topics');
-        
+
         // Записываем темы со всеми необходимыми текстовыми полями
         cloudTopics.forEach(topic => {
           db.runSync(
@@ -193,13 +193,13 @@ export const AuthProvider = ({ children }) => {
             (id, subject_key, title, description, content, quiz_question, quiz_answer, difficulty) 
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
             [
-              topic.id, 
-              topic.subject_key, 
-              topic.title, 
-              topic.description || '', 
-              topic.content || '', 
-              topic.quiz_question || '', 
-              topic.quiz_answer || '', 
+              topic.id,
+              topic.subject_key,
+              topic.title,
+              topic.description || '',
+              topic.content || '',
+              topic.quiz_question || '',
+              topic.quiz_answer || '',
               topic.difficulty || 1
             ]
           );
@@ -218,12 +218,12 @@ export const AuthProvider = ({ children }) => {
         await dbService.init();
         const savedTheme = await AsyncStorage.getItem('user_theme');
         if (savedTheme) setIsDarkMode(savedTheme === 'dark');
-        
+
         // Запускаем каскадную синхронизацию контента
         syncGlossary();
         await syncCourses(); // Сначала скачиваем курсы
         await syncTopics();  // Затем скачиваем темы лекций
-        
+
         const token = await SecureStore.getItemAsync('user_token');
         if (token) {
           const res = await apiClient.get('/api/profile').catch(() => null);
@@ -232,10 +232,17 @@ export const AuthProvider = ({ children }) => {
             setUser(fetchedUser);
             setIsLoggedIn(true);
             setStreak(fetchedUser.streak_count || 0);
-            
+
+            // 🌟 ИСПРАВЛЕНО: Каскадный запуск оффлайн-синхронизации с контролем потоков данных (await)
             if (Platform.OS !== 'web') {
-              await syncProgress(fetchedUser.username);
+              await syncProgress(userData.username); // Железно ждем скачивания галочек прогресса
             }
+            await syncCourses();  // Синхронизируем структуру предметов (нашу Базовую математику!)
+            await syncTopics();   // Скачиваем актуальные тексты лекций и квизов
+            syncGlossary();       // Обновляем базу знаний глоссария в фоновом режиме
+
+            return { success: true };
+
           }
         }
       } catch (e) {
@@ -251,22 +258,22 @@ export const AuthProvider = ({ children }) => {
     const subscription = DeviceEventEmitter.addListener('FORCE_LOGOUT', () => {
       logout();
     });
-    
+
     // Чистим слушатель при размонтировании компонента, чтобы не было утечек памяти
     return () => subscription.remove();
   }, [syncProgress, syncGlossary, syncTopics, syncCourses]);
 
 
-   // 💡 Динамический расчет уровня на основе баланса пользователя
-    const calculateLevel = (totalXp) => {
+  // 💡 Динамический расчет уровня на основе баланса пользователя
+  const calculateLevel = (totalXp) => {
     const xp = totalXp || 0;
     const xpPerLevel = 100; // Количество очков для повышения уровня
-    
+
     const level = Math.floor(xp / xpPerLevel) + 1;
-    const xpInCurrentLevel = xp % xpPerLevel; 
+    const xpInCurrentLevel = xp % xpPerLevel;
     const progress = xpInCurrentLevel / xpPerLevel; // Значение от 0 до 1 для прогресс-бара
     const xpRemaining = xpPerLevel - xpInCurrentLevel;
-    
+
     return { level, xpInCurrentLevel, progress, xpRemaining, xpPerLevel };
   };
 
@@ -429,7 +436,7 @@ export const AuthProvider = ({ children }) => {
       user, isLoggedIn, isDarkMode, streak, isLoading,
       nickname: user?.username, userRole: user?.role, calculateLevel,
       login, register, logout, deleteUserAccount,
-       completedCourses, setCompletedCourses, activeBorder, setActiveBorder,setUser, syncCourses, syncTopics,
+      completedCourses, setCompletedCourses, activeBorder, setActiveBorder, setUser, syncCourses, syncTopics,
       toggleTheme: async () => {
         const n = !isDarkMode; setIsDarkMode(n);
         await AsyncStorage.setItem('user_theme', n ? 'dark' : 'light');
@@ -437,7 +444,7 @@ export const AuthProvider = ({ children }) => {
       completeTopic,
       getLeaderboard: dbService.getLeaderboard,
       executeRaw: (q, p) => db.getAllSync(q, p)
-      
+
     }}>
       <CoursesContext.Provider value={{ completedCourses, setCompletedCourses }}>
         {children}

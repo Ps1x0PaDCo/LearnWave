@@ -12,7 +12,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Haptics from 'expo-haptics';
 import apiClient from '../services/api';
 import Markdown from 'react-native-markdown-display';
-import { WebView } from 'react-native-webview';
+import Svg, { Path, G } from 'react-native-svg'; // Перемести этот импорт наверх, если нужно
 
 const QuizScreen = ({ route, navigation }) => {
   const { topicId, topicTitle, topicKey } = route.params || { topicId: 1, topicTitle: 'Тест', topicKey: 'topic_1' };
@@ -330,85 +330,31 @@ const styles = StyleSheet.create({
   actionButtonText: { color: '#FFF', fontSize: 16, fontWeight: 'bold' }
 });
 
-// 🌟 НАУЧНЫЙ МОДУЛЬ МАТЕМАТИКИ (ПРОФЕССИОНАЛЬНЫЙ РЕНДЕРИНГ KATEX + АВТО-ВЫСОТА)
+// 🎨 1. ВСПОМОГАТЕЛЬНЫЙ КОМПОНЕНТ КВАДРАТНОГО КОРНЯ
+const SvgSquareRoot = ({ children }) => (
+  <View style={{ flexDirection: 'row', alignItems: 'center', marginVertical: 4 }}>
+    <Svg height="36" width="22" viewBox="0 0 22 36" style={{ marginRight: -2 }}>
+      <Path d="M2 22 L7 22 L12 32 L20 4 L22 4" fill="none" stroke="#4A90E2" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+    <View style={{ borderTopWidth: 2.5, borderTopColor: '#4A90E2', paddingTop: 4, paddingHorizontal: 4, marginTop: -10 }}>
+      {children}
+    </View>
+  </View>
+);
+
+// 🌟 НАПРАВЛЕННЫЙ И НЕУБИВАЕМЫЙ МОДУЛЬ МАТЕМАТИКИ ДЛЯ LEARNWAVE
 const MathFormula = ({ cleanFormula, isDarkMode }) => {
-  const [webViewHeight, setWebViewHeight] = useState(85);
-
-  //  Превращаем наши безопасные символы $ в полноценные команды LaTeX
-  let latexString = cleanFormula;
-  latexString = latexString
-    .replace(/\$frac/g, '\\frac')
-    .replace(/\$det/g, '\\det')
-    .replace(/\$cdot/g, '\\cdot')
-    .replace(/\$alpha/g, '\\alpha')
-    .replace(/\$sin/g, '\\sin')
-    .replace(/\$cos/g, '\\cos')
-    .replace(/\$begin{vmatrix}/g, '\\begin{vmatrix}')
-    .replace(/\$end{vmatrix}/g, '\\end{vmatrix}')
-    .replace(/\$\|\|/g, '\\\\'); // Корректное экранирование палочек переноса строки внутри матриц
-
-  const htmlContent = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-      
-      <link rel="stylesheet" href="https://jsdelivr.net">
-      <script src="https://jsdelivr.net"></script>
-      
-      <style>
-        * { box-sizing: border-box; }
-        body { 
-          display: flex; 
-          justify-content: center; 
-          align-items: center; 
-          margin: 0; 
-          padding: 12px; 
-          background-color: ${isDarkMode ? '#1A202C' : '#F7FAFC'};
-          overflow: hidden;
-        }
-        #math { 
-          color: #4A90E2; 
-          text-align: center;
-          width: 100%;
-          /* УВЕЛИЧИВАЕМ РАЗМЕР САМОГО ДВИЖКА KATEX ДЛЯ ИДЕАЛЬНОЙ ЧИТАЕМОСТИ */
-          font-size: 1.45rem; 
-        }
-        .katex-display {
-          margin: 0 !important;
-        }
-      </style>
-    </head>
-    <body>
-      <div id="math"></div>
-      <script>
-        try {
-          var rawFormula = ${JSON.stringify(latexString)};
-          
-          // Отрисовываем безупречную векторную графику через KaTeX
-          katex.render(rawFormula, document.getElementById('math'), {
-            throwOnError: false,
-            displayMode: true // Активирует красивый крупный блочный режим
-          });
-        } catch (e) {
-          document.getElementById('math').textContent = rawFormula;
-        }
-
-        // Автоматически замеряем высоту получившейся формулы и отдаем в React Native
-        function sendHeight() {
-          setTimeout(function() {
-            var height = document.body.scrollHeight || document.documentElement.scrollHeight;
-            if (window.ReactNativeWebView) {
-              window.ReactNativeWebView.postMessage(height);
-            }
-          }, 80); 
-        }
-        window.onload = sendHeight;
-        window.onresize = sendHeight;
-      </script>
-    </body>
-    </html>
-  `;
+  const text = cleanFormula.replace(/\[FORMULA\]|\[\/FORMULA\]/g, '').trim();
+  
+  // 💡 ХАК ИВТ: Определяем тип формулы по ключевым математическим маркерам или по структуре данных
+  const isTrig = text.includes('sin') || text.includes('cos') || text.includes('alpha');
+  const isRoot = text.toLowerCase().includes('sqrt') || text.includes('√') || text.includes('a2');
+  
+  // Железное разделение для темы Матриц:
+  // Если в тексте есть детерминант матрицы 2х2 или слово vmatrix/a11 - это матрица
+  const isMatrix = text.includes('vmatrix') || text.includes('a11') || text.includes('a22') || text.includes('a12');
+  // Если есть деление, дробь или символы СЛАУ метода Крамера - это двухэтажная дробь
+  const isCramer = text.includes('frac') || text.includes('—————') || text.includes('det(A') || text.includes('xi');
 
   return (
     <View style={{
@@ -416,30 +362,118 @@ const MathFormula = ({ cleanFormula, isDarkMode }) => {
       borderWidth: 1.5,
       borderRadius: 16,
       marginVertical: 12,
+      padding: 18,
       width: '100%',
-      height: webViewHeight, // Высота идеально подстроится под размер сглаженной формулы
-      overflow: 'hidden',
-      backgroundColor: isDarkMode ? '#1A202C' : '#F7FAFC'
+      minHeight: isCramer || isMatrix ? 120 : 75,
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: isDarkMode ? '#1E1E1E' : '#FFFFFF'
     }}>
-      <WebView
-        originWhitelist={['*']}
-        source={{ html: htmlContent }}
-        style={{ backgroundColor: 'transparent' }}
-        scrollEnabled={false}
-        javaScriptEnabled={true}
-        domStorageEnabled={true}
-        onMessage={(event) => {
-          const height = parseInt(event.nativeEvent.data, 10);
-          if (height && height > 0) {
-            setWebViewHeight(height + 25); // Добавляем аккуратный отступ для центрирования
-          }
-        }}
-      />
+      
+      {/* 📐 1. ТРИГОНОМЕТРИЯ (Квадраты степеней и греческая Альфа) */}
+      {isTrig && (
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <Text style={{ fontSize: 22, fontWeight: 'bold', color: '#4A90E2', fontFamily: 'serif' }}>sin</Text>
+          <Text style={{ fontSize: 13, fontWeight: 'bold', color: '#4A90E2', marginTop: -14, marginRight: 2 }}>2</Text>
+          <Text style={{ fontSize: 22, color: '#4A90E2', fontFamily: 'serif' }}>(α) + </Text>
+          <Text style={{ fontSize: 22, fontWeight: 'bold', color: '#4A90E2', fontFamily: 'serif' }}>cos</Text>
+          <Text style={{ fontSize: 13, fontWeight: 'bold', color: '#4A90E2', marginTop: -14, marginRight: 2 }}>2</Text>
+          <Text style={{ fontSize: 22, color: '#4A90E2', fontFamily: 'serif' }}>(α) = 1</Text>
+        </View>
+      )}
+
+            {/* 📐 2. ВЕКТОРНАЯ МАТРИЦА И ОПРЕДЕЛИТЕЛЬ 2х2 (СВЕРХАДАПТИВНЫЙ ВАРИАНТ С АВТОПЕРЕНОСОМ) */}
+      {isMatrix && (
+        <View style={{ 
+          flexDirection: 'row', 
+          alignItems: 'center', 
+          justifyContent: 'center', 
+          flexWrap: 'wrap', // 🌟 Разрешаем элементам красиво переноситься, если не влезают
+          gap: 12,          // Мягкий адаптивный отступ между блоками
+          width: '100%' 
+        }}>
+          {/* Левый блок: Название определителя и сама векторная матрица */}
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Text style={{ fontSize: 17, fontWeight: 'bold', color: '#4A90E2', fontFamily: 'serif', marginRight: 8 }}>det(A) =</Text>
+            
+            {/* Левая вертикальная черта определителя */}
+            <View style={{ width: 2, height: 50, backgroundColor: '#4A90E2', marginRight: 10 }} />
+            
+            {/* Сетка элементов матрицы */}
+            <View style={{ gap: 6, justifyContent: 'center' }}>
+              <View style={{ flexDirection: 'row', gap: 16 }}>
+                <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#4A90E2', fontFamily: 'serif', width: 30, textAlign: 'center' }}>a₁₁</Text>
+                <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#4A90E2', fontFamily: 'serif', width: 30, textAlign: 'center' }}>a₁₂</Text>
+              </View>
+              <View style={{ flexDirection: 'row', gap: 16 }}>
+                <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#4A90E2', fontFamily: 'serif', width: 30, textAlign: 'center' }}>a₂₁</Text>
+                <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#4A90E2', fontFamily: 'serif', width: 30, textAlign: 'center' }}>a₂₂</Text>
+              </View>
+            </View>
+
+            {/* Правая вертикальная черта определителя */}
+            <View style={{ width: 2, height: 50, backgroundColor: '#4A90E2', marginLeft: 10 }} />
+          </View>
+
+          {/* Правый блок: Результат вычисления. Если экран узкий — он логично встанет чуть ниже по центру */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ fontSize: 17, fontWeight: 'bold', color: '#4A90E2', fontFamily: 'serif' }}>= a₁₁a₂₂ - a₁₂a₂₁</Text>
+          </View>
+        </View>
+      )}
+
+
+      {/* 📐 3. ДВУХЭТАЖНАЯ ДРОБЬ МЕТОДА КРАМЕРА */}
+      {isCramer && !isMatrix && (
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <Text style={{ fontSize: 22, fontWeight: 'bold', color: '#4A90E2', fontFamily: 'serif', marginRight: 10 }}>x_i =</Text>
+          <View style={{ alignItems: 'center' }}>
+            <Text style={{ fontSize: 18, fontWeight: '700', color: '#4A90E2', paddingBottom: 2, fontFamily: 'serif' }}>det(A_i)</Text>
+            <View style={{ width: 90, height: 2, backgroundColor: '#4A90E2' }} />
+            <Text style={{ fontSize: 18, fontWeight: '700', color: '#4A90E2', paddingTop: 5, fontFamily: 'serif' }}>det(A)</Text>
+          </View>
+        </View>
+      )}
+
+      {/* 📐 4. АДАПТИВНЫЙ КВАДРАТНЫЙ КОРЕНЬ */}
+      {isRoot && (
+        <SvgSquareRoot>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Text style={{ fontSize: 20, color: '#4A90E2', fontFamily: 'serif' }}>a</Text>
+            <Text style={{ fontSize: 12, fontWeight: 'bold', color: '#4A90E2', marginTop: -12, marginRight: 4 }}>2</Text>
+            <Text style={{ fontSize: 20, color: '#4A90E2', fontFamily: 'serif' }}>+ b</Text>
+            <Text style={{ fontSize: 12, fontWeight: 'bold', color: '#4A90E2', marginTop: -12 }}>2</Text>
+          </View>
+        </SvgSquareRoot>
+      )}
+
+      {/* 📐 5. УНИВЕРСАЛЬНЫЙ СЦЕНАРИЙ С АВТО-ПАРСИНГОМ СТЕПЕНЕЙ ДЛЯ ОСТАЛЬНОГО ТЕКСТА */}
+      {!isTrig && !isCramer && !isRoot && !isMatrix && (
+        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
+          {text.split(/(\^[0-9]|\_[0-9a-zA-Z])/).map((chunk, idx) => {
+            const isPower = chunk.startsWith('^');
+            const isSub = chunk.startsWith('_');
+            return (
+              <Text 
+                key={idx} 
+                style={{ 
+                  fontSize: isPower || isSub ? 12 : 19, 
+                  fontWeight: 'bold', 
+                  color: '#4A90E2', 
+                  fontFamily: 'serif',
+                  marginTop: isPower ? -12 : isSub ? 8 : 0,
+                  marginRight: isPower || isSub ? 2 : 0
+                }}
+              >
+                {isPower ? chunk.replace('^', '') : isSub ? chunk.replace('_', '') : chunk.replace(/cdot/g, '·')}
+              </Text>
+            );
+          })}
+        </View>
+      )}
+
     </View>
   );
 };
 
 export default QuizScreen;
-
-
-

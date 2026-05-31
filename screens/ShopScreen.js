@@ -14,7 +14,7 @@ import * as Haptics from 'expo-haptics';
 const { width } = Dimensions.get('window');
 
 const ShopScreen = ({ navigation }) => {
-    const { user, setUser, isDarkMode } = useContext(AuthContext);
+    const { user, setUser, isDarkMode, buyInterfaceBorder } = useContext(AuthContext);
     const colors = getThemeColors(isDarkMode);
 
     const [activeTab, setActiveTab] = useState('boosts'); // 'boosts' или 'cosmetics'
@@ -38,57 +38,81 @@ const ShopScreen = ({ navigation }) => {
 
     };
 
-    const handleBuy = async (item) => {
-        if ((user?.balance || 0) < item.price) {
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-            Alert.alert('Упс! 🥺', 'Недостаточно монет. Проходи новые лекции и тесты, чтобы заработать валюту!');
-            return;
+  // 🌟 ИСПРАВЛЕНО: Объединенная атомарная функция покупки (Рамки + Бустеры)
+  const handleBuy = async (item) => {
+    if ((user?.balance || 0) < item.price) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert('Упс! 🥺', 'Недостаточно монет. Проходи новые лекции и тесты, чтобы заработать валюту!');
+      return;
+    }
+
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setBuyingId(item.id);
+
+    // ============================================================
+    // СЦЕНАРИЙ 1: ПОКУПКА КАСКАДНОЙ РАМКИ (КОСМЕТИКА)
+    // ============================================================
+    if (item.type === 'frame') {
+      try {
+        const borderId = item.id.replace('frame_', ''); // 'bronze', 'gold', 'neon'
+        const result = await buyInterfaceBorder(borderId, item.price);
+
+        if (result.success) {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          Alert.alert('Ура! 🎉', `Внешний вид "${item.title}" успешно применён!`);
+        } else {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          Alert.alert('Ошибка покупки', result.error || 'Сервер отклонил транзакцию.');
         }
+      } catch (err) {
+        console.log('❌ Сбой транзакции рамки на экране магазина:', err.message);
+        Alert.alert('Ошибка', 'Не удалось применить кастомизацию.');
+      } finally {
+        setBuyingId(null);
+      }
+      return; 
+    }
 
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        setBuyingId(item.id);
+    // ============================================================
+    // СЦЕНАРИЙ 2: ПОКУПКА БУСТЕРОВ ЗНАНИЙ (ПОДСКАЗКИ, ЗАМОРОЗКА)
+    // ============================================================
+    try {
+      // Отправляем запрос на Node.js бэкенд
+      const res = await apiClient.post('/api/shop/buy', {
+        item_type: item.type,
+        item_value: item.value,
+        price: item.price
+      });
 
+      if (res.data.success) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+        // Обновляем кошелек пользователя в оперативной памяти приложения
+        const newBalance = res.data.newBalance || ((user?.balance || 0) - item.price);
+        setUser(prev => prev ? { ...prev, balance: newBalance } : null);
+
+        // 💡 КЭШИРУЕМ БАЛАНС В SQLite (Полноценный оффлайн-режим)
         try {
-            // Шлем запрос на наш созданный Node.js эндпоинт
-            const res = await apiClient.post('/api/shop/buy', {
-                item_type: item.type,
-                item_value: item.value,
-                price: item.price
-            });
-
-            if (res.data.success) {
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-
-                // ОБНОВЛЯЕМ БАЛАНС НА КЛИЕНТЕ: Меняем монеты в контексте
-                setUser(prev => prev ? { ...prev, balance: res.data.newBalance } : null);
-
-                // 🔽 ВСТАВЬ ЭТОТ БЛОК ДЛЯ КАСКАДНОГО СОХРАНЕНИЯ РАМОК В ANDROID:
-                if (item.type === 'frame' && user?.username) {
-                    // Переводим id товара в короткий ключ для стилей профиля
-                    const borderId = item.id.replace('frame_', ''); // 'bronze', 'gold', 'neon'
-                    await AsyncStorage.setItem(`border_${user.username}`, borderId);
-                }
-                // 🔼 КОНЕЦ ВСТАВКИ
-
-                Alert.alert('Ура! 🎉', `${item.title} товар приобретён!`);
-            }
-
-                } catch (err) {
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-            
-            // 📡 ВЫВОДИМ ПОЛНЫЙ ТЕХНИЧЕСКИЙ ЛОГ В ТЕРМИНАЛ VS CODE:
-            console.log('\n🚨 [SHOP ERROR COMPONENT]: Произошел сбой при покупке товара!');
-            console.log('STATUS:', err.response?.status);
-            console.log('SERVER MESSAGE:', JSON.stringify(err.response?.data));
-            console.log('LOCAL MESSAGE:', err.message);
-            console.log('-----------------------------------------------------\n');
-
-            Alert.alert('Ошибка', err.response?.data?.error || 'Не удалось связаться с сервером.');
-        } finally {
-
-            setBuyingId(null);
+          const { db } = require('../services/db'); // Безопасный вызов локальной базы
+          if (db && user?.username) {
+            db.runSync('UPDATE users SET balance = ? WHERE username = ?;', [newBalance, user.username]);
+          }
+        } catch (sqliteErr) {
+          console.log('⚠️ Ошибка синхронизации баланса бустеров в SQLite:', sqliteErr.message);
         }
-    };
+
+        Alert.alert('Ура! 🎉', `Товар "${item.title}" успешно приобретён!`);
+      }
+    } catch (err) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      console.log('🚨 Сбой при покупке бустера в магазине:', err.message);
+      Alert.alert('Ошибка', 'Не удалось связаться с сервером.');
+    } finally {
+      setBuyingId(null);
+    }
+  };
+
+
 
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
@@ -187,6 +211,5 @@ const styles = StyleSheet.create({
     buyBtn: { height: 42, borderRadius: 14, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', width: '100%', maxWidth: 160 },
     buyBtnText: { color: '#FFF', fontSize: 13, fontWeight: 'bold' },
     buyBtnPrice: { color: '#FFF', fontSize: 14, fontWeight: '900' }
-});
-
+    });
 export default ShopScreen;
