@@ -330,37 +330,32 @@ const styles = StyleSheet.create({
   actionButtonText: { color: '#FFF', fontSize: 16, fontWeight: 'bold' }
 });
 
-// 🌟 АДАПТИВНЫЙ ИЗОЛИРОВАННЫЙ КОМПОНЕНТ ДЛЯ ФОРМУЛ (УБИРАЕТ ОШИБКУ RULES OF HOOKS И ДЕЛАЕТ ШРИФТ КРУПНЫМ)
+// 🌟 НАУЧНЫЙ МОДУЛЬ МАТЕМАТИКИ (ПРОФЕССИОНАЛЬНЫЙ РЕНДЕРИНГ KATEX + АВТО-ВЫСОТА)
 const MathFormula = ({ cleanFormula, isDarkMode }) => {
-  const [webViewHeight, setWebViewHeight] = useState(80);
+  const [webViewHeight, setWebViewHeight] = useState(85);
 
+  //  Превращаем наши безопасные символы $ в полноценные команды LaTeX
   let latexString = cleanFormula;
-  if (!latexString.startsWith('\\')) {
-    latexString = latexString
-      .replace(/frac/g, '\\frac')
-      .replace(/det/g, '\\det')
-      .replace(/cdot/g, '\\cdot')
-      .replace(/begin{vmatrix}/g, '\\begin{vmatrix}')
-      .replace(/end{vmatrix}/g, '\\end{vmatrix}')
-      .replace(/alpha/g, '\\alpha')
-      .replace(/beta/g, '\\beta');
-  }
+  latexString = latexString
+    .replace(/\$frac/g, '\\frac')
+    .replace(/\$det/g, '\\det')
+    .replace(/\$cdot/g, '\\cdot')
+    .replace(/\$alpha/g, '\\alpha')
+    .replace(/\$sin/g, '\\sin')
+    .replace(/\$cos/g, '\\cos')
+    .replace(/\$begin{vmatrix}/g, '\\begin{vmatrix}')
+    .replace(/\$end{vmatrix}/g, '\\end{vmatrix}')
+    .replace(/\$\|\|/g, '\\\\'); // Корректное экранирование палочек переноса строки внутри матриц
 
   const htmlContent = `
     <!DOCTYPE html>
     <html>
     <head>
       <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-      <script>
-        window.MathJax = {
-          tex: {
-            inlineMath: [['$', '$']],
-            displayMath: [['$$', '$$']]
-          },
-          svg: { fontCache: 'global' }
-        };
-      </script>
-      <script id="MathJax-script" async src="https://jsdelivr.net"></script>
+      
+      <link rel="stylesheet" href="https://jsdelivr.net">
+      <script src="https://jsdelivr.net"></script>
+      
       <style>
         * { box-sizing: border-box; }
         body { 
@@ -368,44 +363,48 @@ const MathFormula = ({ cleanFormula, isDarkMode }) => {
           justify-content: center; 
           align-items: center; 
           margin: 0; 
-          padding: 8px; 
+          padding: 12px; 
           background-color: ${isDarkMode ? '#1A202C' : '#F7FAFC'};
           overflow: hidden;
         }
         #math { 
           color: #4A90E2; 
           text-align: center;
-          /* Крупный академический размер формул */
-          font-size: 24px; 
           width: 100%;
+          /* УВЕЛИЧИВАЕМ РАЗМЕР САМОГО ДВИЖКА KATEX ДЛЯ ИДЕАЛЬНОЙ ЧИТАЕМОСТИ */
+          font-size: 1.45rem; 
         }
-        /* Стилизуем MathJax SVG, чтобы он масштабировался красиво */
-        mjx-container[display="true"] {
+        .katex-display {
           margin: 0 !important;
         }
       </style>
     </head>
     <body>
-      <!-- Оборачиваем в двойные доллары для запуска полноценного блочного LaTeX режима -->
-      <div id="math">$$\ ${latexString} \$$</div>
+      <div id="math"></div>
       <script>
+        try {
+          var rawFormula = ${JSON.stringify(latexString)};
+          
+          // Отрисовываем безупречную векторную графику через KaTeX
+          katex.render(rawFormula, document.getElementById('math'), {
+            throwOnError: false,
+            displayMode: true // Активирует красивый крупный блочный режим
+          });
+        } catch (e) {
+          document.getElementById('math').textContent = rawFormula;
+        }
+
+        // Автоматически замеряем высоту получившейся формулы и отдаем в React Native
         function sendHeight() {
           setTimeout(function() {
             var height = document.body.scrollHeight || document.documentElement.scrollHeight;
             if (window.ReactNativeWebView) {
               window.ReactNativeWebView.postMessage(height);
             }
-          }, 150);
+          }, 80); 
         }
-        window.onload = function() {
-          if (window.MathJax && MathJax.startup) {
-            MathJax.startup.promise.then(function() {
-              sendHeight();
-            });
-          } else {
-            sendHeight();
-          }
-        };
+        window.onload = sendHeight;
+        window.onresize = sendHeight;
       </script>
     </body>
     </html>
@@ -418,7 +417,7 @@ const MathFormula = ({ cleanFormula, isDarkMode }) => {
       borderRadius: 16,
       marginVertical: 12,
       width: '100%',
-      height: webViewHeight, 
+      height: webViewHeight, // Высота идеально подстроится под размер сглаженной формулы
       overflow: 'hidden',
       backgroundColor: isDarkMode ? '#1A202C' : '#F7FAFC'
     }}>
@@ -427,10 +426,12 @@ const MathFormula = ({ cleanFormula, isDarkMode }) => {
         source={{ html: htmlContent }}
         style={{ backgroundColor: 'transparent' }}
         scrollEnabled={false}
+        javaScriptEnabled={true}
+        domStorageEnabled={true}
         onMessage={(event) => {
           const height = parseInt(event.nativeEvent.data, 10);
           if (height && height > 0) {
-            setWebViewHeight(height + 25); // Небольшой отступ для центрирования матрицы
+            setWebViewHeight(height + 25); // Добавляем аккуратный отступ для центрирования
           }
         }}
       />
@@ -439,3 +440,6 @@ const MathFormula = ({ cleanFormula, isDarkMode }) => {
 };
 
 export default QuizScreen;
+
+
+
