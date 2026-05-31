@@ -148,85 +148,114 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   // Функция автоматического скачивания тем из облака в локальную SQLite
+  // 🌟 1. Функция автоматического скачивания КУРСОВ из облака в SQLite
+  const syncCourses = useCallback(async () => {
+    try {
+      console.log('🔄 [Sync] Starting courses synchronization with PostgreSQL...');
+      const res = await apiClient.get('/api/courses');
+      if (res.data.success && res.data.categories) {
+        // Очищаем старые курсы, чтобы избежать дубликатов при обновлении
+        db.runSync('DELETE FROM courses');
+        
+        // Разворачиваем сгруппированные категории и записываем курсы в SQLite
+        res.data.categories.forEach(category => {
+          if (category.subjects && Array.isArray(category.subjects)) {
+            category.subjects.forEach(course => {
+              db.runSync(
+                'INSERT OR REPLACE INTO courses (id, title, subject_key) VALUES (?, ?, ?)',
+                [course.id, course.title, course.subject_key]
+              );
+            });
+          }
+        });
+        console.log('✅ [Sync] Courses synced successfully (PostgreSQL -> SQLite).');
+      }
+    } catch (e) {
+      console.log("⚠️ [Sync] Courses offline mode active:", e.message);
+    }
+  }, []);
+
+  // 🌟 2. Исправленная функция скачивания ТЕМ (Сохраняет все поля: content, квизы!)
   const syncTopics = useCallback(async () => {
     try {
       console.log('🔄 [Sync] Starting topics synchronization with PostgreSQL...');
       const res = await apiClient.get('/api/topics');
       if (res.data.success) {
         const cloudTopics = res.data.topics || [];
-
-        // Сначала очистим старые локальные темы, чтобы не дублировать
+        
+        // Очищаем старые темы перед записью обновлений
         db.runSync('DELETE FROM topics');
-
-        // Записываем новые темы в SQLite телефона
+        
+        // Записываем темы со всеми необходимыми текстовыми полями
         cloudTopics.forEach(topic => {
           db.runSync(
-            'INSERT INTO topics (id, subject_key, title) VALUES (?, ?, ?)',
-            [topic.id, topic.subject_key, topic.title]
+            `INSERT OR REPLACE INTO topics 
+            (id, subject_key, title, description, content, quiz_question, quiz_answer, difficulty) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              topic.id, 
+              topic.subject_key, 
+              topic.title, 
+              topic.description || '', 
+              topic.content || '', 
+              topic.quiz_question || '', 
+              topic.quiz_answer || '', 
+              topic.difficulty || 1
+            ]
           );
         });
-        console.log('✅ [Sync] Topics synced successfully (PostgreSQL -> SQLite).');
+        console.log('✅ [Sync] Topics and Lectures synced successfully!');
       }
     } catch (e) {
-      console.log("⚠️ [Sync] Topics offline mode activated. Using cached local topics.");
+      console.log("⚠️ [Sync] Topics offline mode active:", e.message);
     }
   }, []);
 
-
-
+  // 🌟 3. ГЛОБАЛЬНЫЙ ТРИГГЕР ИНИЦИАЛИЗАЦИИ ПРИ СТАРТЕ ПРИЛОЖЕНИЯ
   useEffect(() => {
     async function init() {
       try {
         await dbService.init();
         const savedTheme = await AsyncStorage.getItem('user_theme');
         if (savedTheme) setIsDarkMode(savedTheme === 'dark');
-
+        
+        // Запускаем каскадную синхронизацию контента
         syncGlossary();
-        syncTopics();
-
+        await syncCourses(); // Сначала скачиваем курсы
+        await syncTopics();  // Затем скачиваем темы лекций
+        
         const token = await SecureStore.getItemAsync('user_token');
         if (token) {
           const res = await apiClient.get('/api/profile').catch(() => null);
-
-    if (res?.data?.success && res.data.user && res.data.user.length > 0) {
-      const fetchedUser = res.data.user[0]; // Наш чистый объект юзера
-      
-      setUser(fetchedUser);
-      setIsLoggedIn(true);
-      setStreak(fetchedUser.streak_count || 0);
-      
-      // 💡 ИСПРАВЛЕНО: Фоновые SQLite-методы запускаем ТОЛЬКО на смартфонах, в Web-версии пропускаем!
-      if (Platform.OS !== 'web') {
-        await syncProgress(fetchedUser.username);
-        try {
-          const done = db.getAllSync(
-            "SELECT topic_key FROM user_progress WHERE username = ? AND status = 'completed'",
-            [fetchedUser.username]
-          );
-          setCompletedCourses(done.map(row => row.topic_key));
-        } catch (err) {
-          console.log('❌ Ошибка загрузки галочек при старте:', err.message);
+          if (res?.data?.success && res.data.user) {
+            const fetchedUser = Array.isArray(res.data.user) ? res.data.user[0] : res.data.user;
+            setUser(fetchedUser);
+            setIsLoggedIn(true);
+            setStreak(fetchedUser.streak_count || 0);
+            
+            if (Platform.OS !== 'web') {
+              await syncProgress(fetchedUser.username);
+            }
+          }
         }
-      }
-    }
-  }
-
-        // 💡 ИСПРАВЛЕНО: Слушаем событие разлогина из api.js внутри тела хука useEffect!
-        const subscription = DeviceEventEmitter.addListener('FORCE_LOGOUT', () => {
-          logout();
-        });
-
-        // Чистим слушатель при размонтировании компонента, чтобы не было утечек памяти
-        return () => subscription.remove();
-
       } catch (e) {
         console.log('❌ [Init] Ошибка инициализации:', e);
       } finally {
         setIsLoading(false);
       }
     }
+
     init();
-  }, [syncProgress, syncGlossary, syncTopics]);
+
+    // 💡 Слушаем событие разлогина из api.js внутри тела хука useEffect!
+    const subscription = DeviceEventEmitter.addListener('FORCE_LOGOUT', () => {
+      logout();
+    });
+    
+    // Чистим слушатель при размонтировании компонента, чтобы не было утечек памяти
+    return () => subscription.remove();
+  }, [syncProgress, syncGlossary, syncTopics, syncCourses]);
+
 
    // 💡 Динамический расчет уровня на основе баланса пользователя
     const calculateLevel = (totalXp) => {
@@ -400,7 +429,7 @@ export const AuthProvider = ({ children }) => {
       user, isLoggedIn, isDarkMode, streak, isLoading,
       nickname: user?.username, userRole: user?.role, calculateLevel,
       login, register, logout, deleteUserAccount,
-       completedCourses, setCompletedCourses, activeBorder, setActiveBorder,setUser,
+       completedCourses, setCompletedCourses, activeBorder, setActiveBorder,setUser, syncCourses, syncTopics,
       toggleTheme: async () => {
         const n = !isDarkMode; setIsDarkMode(n);
         await AsyncStorage.setItem('user_theme', n ? 'dark' : 'light');
