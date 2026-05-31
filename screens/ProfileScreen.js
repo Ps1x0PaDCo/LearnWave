@@ -35,7 +35,7 @@ const ProfileScreen = ({ navigation }) => {
     nickname, isDarkMode, toggleTheme, logout, updateUserName,
     getCompletedTopics, getAchievements, user,
     deleteUserAccount, calculateLevel, activeBorder,
-    setActiveBorder, buyInterfaceBorder,
+    setActiveBorder, buyInterfaceBorder, completedCourses,
   } = useContext(AuthContext);
 
   const { level, xpInCurrentLevel, progress, xpRemaining, xpPerLevel } = calculateLevel(user?.balance || 0);
@@ -95,19 +95,37 @@ const ProfileScreen = ({ navigation }) => {
   const [tempNickname, setTempNickname] = useState('');
 
 
+  // 🌟 ИСПРАВЛЕНО: Реактивный подсчет статистики напрямую из стейта контекста и SQLite
   useEffect(() => {
     const refreshData = async () => {
       if (nickname) {
-        const comp = getCompletedTopics(nickname) || [];
-        const achs = getAchievements(nickname) || [];
+        // 1. Считываем аватарку из кэша Android
         const saved = await AsyncStorage.getItem(`avatar_${nickname}`);
-        setStats({ completed: comp, awards: achs });
         if (saved) setSelectedAvatar(saved);
         setTempNickname(nickname);
+
+        try {
+          // 2. Считываем количество уникальных полученных наград из локальной SQLite таблицы
+          const { db } = require('../services/db'); // Безопасный вызов СУБД
+          const awardsResult = db.getAllSync(
+            "SELECT id FROM user_progress WHERE username = ? AND status = 'completed'", 
+            [nickname]
+          );
+          
+          setStats({ 
+            // Пройденные лекции берем прямо из живого массива контекста (гарантия автообновления!)
+            completed: completedCourses || [], 
+            awards: awardsResult || [] 
+          });
+        } catch (sqliteErr) {
+          console.log('⚠️ Ошибка подсчета оффлайн-наград в профиле:', sqliteErr.message);
+          setStats({ completed: completedCourses || [], awards: [] });
+        }
       }
     };
+    
     refreshData();
-  }, [nickname]);
+  }, [nickname, completedCourses]); // Добавили completedCourses в зависимости, чтобы цифры менялись на лету!
 
   const saveNewNickname = async () => {
     const trimmedName = tempNickname.trim();

@@ -41,13 +41,18 @@ db.execSync(`
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
-  CREATE TABLE IF NOT EXISTS progress (
-    id INTEGER PRIMARY KEY AUTOINCREMENT, 
-    username TEXT NOT NULL, 
-    topic_id INTEGER NOT NULL,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(username, topic_id)
-  );
+      -- 🌟 ИСПРАВЛЕНО: Заменили косые слэши на двойное тире, чтобы SQLite не ругалась!
+      CREATE TABLE IF NOT EXISTS user_progress (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, 
+        username TEXT NOT NULL, 
+        topic_id INTEGER NOT NULL,
+        topic_key TEXT NOT NULL, 
+        status TEXT DEFAULT 'completed',
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(username, topic_id)
+      );
+
+
 
   CREATE TABLE IF NOT EXISTS glossary (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

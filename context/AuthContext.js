@@ -130,34 +130,42 @@ export const AuthProvider = ({ children }) => {
 
   // === ОБНОВЛЕННЫЙ БЛОК СИНХРОНИЗАЦИИ И АВТОРИЗАЦИИ ===
 
-  // Функция синхронизации глоссария с PostgreSQL в локальную SQLite
-  const syncGlossary = useCallback(async () => {
+  // 🌟 ИСПРАВЛЕНО: Объявление переведено на async function для автоподнятия (hoisting)
+  // 🌟 1. ФУНКЦИЯ ГЛОССАРИЯ (С АВТОПОДНЯТИЕМ И ПАКЕТНОЙ ТРАНЗАКЦИЕЙ)
+  async function syncGlossary() {
     try {
-      console.log('?? [Sync] Starting glossary synchronization with PostgreSQL...');
+      console.log('📖 [Sync] Starting glossary synchronization with PostgreSQL...');
       const res = await apiClient.get('/api/glossary');
-      if (res.data.success) {
+      if (res.data.success && Array.isArray(res.data.glossary)) {
         const cloudGlossary = res.data.glossary;
-        cloudGlossary.forEach(item => {
-          dbService.saveGlossaryTerm(item.term, item.definition, item.subject_key);
-        });
-        console.log('? [Sync] Glossary synced successfully (PostgreSQL -> SQLite).');
+        db.runSync('BEGIN TRANSACTION;');
+        try {
+          db.runSync('DELETE FROM glossary;');
+          cloudGlossary.forEach(item => {
+            db.runSync(
+              'INSERT OR REPLACE INTO glossary (term, definition, subject_key) VALUES (?, ?, ?);',
+              [item.term, item.definition, item.subject_key]
+            );
+          });
+          db.runSync('COMMIT;');
+          console.log('✅ [Sync] Glossary bundled and synced successfully via Transaction!');
+        } catch (innerErr) {
+          db.runSync('ROLLBACK;');
+          console.log('❌ Сбой записи глоссария в SQLite:', innerErr.message);
+        }
       }
     } catch (e) {
-      console.log("?? [Sync] Glossary offline mode activated. Loading local formulas from SQLite.");
+      console.log("⚠️ [Sync] Glossary offline mode active.");
     }
-  }, []);
+  }
 
-  // Функция автоматического скачивания тем из облака в локальную SQLite
-  // 🌟 1. Функция автоматического скачивания КУРСОВ из облака в SQLite
-  const syncCourses = useCallback(async () => {
+  // 🌟 2. ФУНКЦИЯ КУРСОВ И КАТАЛОГА
+  async function syncCourses() {
     try {
       console.log('🔄 [Sync] Starting courses synchronization with PostgreSQL...');
       const res = await apiClient.get('/api/courses');
       if (res.data.success && res.data.categories) {
-        // Очищаем старые курсы, чтобы избежать дубликатов при обновлении
         db.runSync('DELETE FROM courses');
-
-        // Разворачиваем сгруппированные категории и записываем курсы в SQLite
         res.data.categories.forEach(category => {
           if (category.subjects && Array.isArray(category.subjects)) {
             category.subjects.forEach(course => {
@@ -173,20 +181,16 @@ export const AuthProvider = ({ children }) => {
     } catch (e) {
       console.log("⚠️ [Sync] Courses offline mode active:", e.message);
     }
-  }, []);
+  }
 
-  // 🌟 2. Исправленная функция скачивания ТЕМ (Сохраняет все поля: content, квизы!)
-  const syncTopics = useCallback(async () => {
+  // 🌟 3. ИСПРАВЛЕННАЯ МОНОЛИТНАЯ ФУНКЦИЯ ЛЕКЦИЙ И ТЕМ (БЕЗ ДУБЛИКАТОВ)
+  async function syncTopics() {
     try {
       console.log('🔄 [Sync] Starting topics synchronization with PostgreSQL...');
       const res = await apiClient.get('/api/topics');
       if (res.data.success) {
         const cloudTopics = res.data.topics || [];
-
-        // Очищаем старые темы перед записью обновлений
         db.runSync('DELETE FROM topics');
-
-        // Записываем темы со всеми необходимыми текстовыми полями
         cloudTopics.forEach(topic => {
           db.runSync(
             `INSERT OR REPLACE INTO topics 
@@ -209,7 +213,8 @@ export const AuthProvider = ({ children }) => {
     } catch (e) {
       console.log("⚠️ [Sync] Topics offline mode active:", e.message);
     }
-  }, []);
+  }
+
 
   // 🌟 3. ГЛОБАЛЬНЫЙ ТРИГГЕР ИНИЦИАЛИЗАЦИИ ПРИ СТАРТЕ ПРИЛОЖЕНИЯ
   useEffect(() => {
@@ -235,7 +240,7 @@ export const AuthProvider = ({ children }) => {
 
             // 🌟 ИСПРАВЛЕНО: Каскадный запуск оффлайн-синхронизации с контролем потоков данных (await)
             if (Platform.OS !== 'web') {
-              await syncProgress(userData.username); // Железно ждем скачивания галочек прогресса
+              await syncProgress(fetchedUser.username); // 🌟 ИСПРАВЛЕНО: Передали fetchedUser!
             }
             await syncCourses();  // Синхронизируем структуру предметов (нашу Базовую математику!)
             await syncTopics();   // Скачиваем актуальные тексты лекций и квизов
@@ -261,7 +266,7 @@ export const AuthProvider = ({ children }) => {
 
     // Чистим слушатель при размонтировании компонента, чтобы не было утечек памяти
     return () => subscription.remove();
-  }, [syncProgress, syncGlossary, syncTopics, syncCourses]);
+  }, []);
 
 
   // 💡 Динамический расчет уровня на основе баланса пользователя
@@ -325,10 +330,26 @@ export const AuthProvider = ({ children }) => {
         return { success: true };
       }
     } catch (error) {
-      console.log('❌ Ошибка метода login:', error.message);
+      console.log('❌ Сбой метода login:', error.message);
+      
+      // 🌟 ИСПРАВЛЕНО: Защита от кракозябр. Вытаскиваем точечное сообщение от сервера
+      let serverMessage = 'Не удалось связаться с сервером базы данных.';
+      
+      if (error.response?.data?.error) {
+        serverMessage = error.response.data.error;
+      } else if (error.response?.status === 401) {
+        serverMessage = 'Неверный пароль или учетная запись не существует.';
+      } else if (error.response?.status === 444) {
+        serverMessage = 'Пользователь с таким Email не найден.';
+      }
+
+      // Переводим сообщения на понятный русский язык, если бэкенд вернул сырой текст
+      if (serverMessage.includes('password')) serverMessage = 'Неверный пароль. Пожалуйста, попробуйте еще раз.';
+      if (serverMessage.includes('email') || serverMessage.includes('user')) serverMessage = 'Пользователь с таким Email не зарегистрирован.';
+
       return {
         success: false,
-        error: error.response?.data?.error || 'Неверный email или пароль.'
+        error: serverMessage
       };
     }
   };
