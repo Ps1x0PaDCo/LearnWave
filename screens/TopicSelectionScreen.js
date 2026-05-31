@@ -22,14 +22,13 @@ const TopicSelectionScreen = ({ route, navigation }) => {
     const loadTopics = () => {
       try {
         const rows = db.getAllSync(
-          'SELECT id, title, description, subject_key FROM topics WHERE subject_key = ? ORDER BY id ASC',
+          // 🌟 ИСПРАВЛЕНО: Добавили выборку поля content, чтобы лекция больше не открывалась пустой!
+          'SELECT id, title, description, content, subject_key FROM topics WHERE subject_key = ? ORDER BY id ASC',
           [subject.subject_key]
         );
         setTopics(rows || []);
-
-        // 🎯 ВСТАВЬ ЭТОТ ЛОГ СЮДА:
+        
         console.log('📱 [DEBUG] completedCourses в стейте сейчас:', completedCourses);
-
       } catch (e) {
         console.log('❌ Ошибка получения списка тем из SQLite:', e.message);
       } finally {
@@ -40,18 +39,20 @@ const TopicSelectionScreen = ({ route, navigation }) => {
   }, [subject.subject_key, completedCourses]);
 
 
+
   const handleTopicPress = (item) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-
-    // 💡 ИСПРАВЛЕНО: Генерируем правильный строковый ключ темы (например, math_1)
     const topicKey = `${item.subject_key}_${item.id}`;
-
+    
+    // 💡 Передаем чистый текст лекции на экран чтения/квиза
     navigation.navigate('QuizScreen', {
       topicId: item.id,
       topicTitle: item.title,
+      topicContent: item.content, // 🌟 ДОБАВИЛИ СЮДА!
       topicKey: topicKey
     });
   };
+
 
   if (loading) {
     return (

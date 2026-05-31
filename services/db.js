@@ -8,7 +8,7 @@ export const initDatabase = () => {
   try {
     db.execSync(`
       CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+         id INTEGER PRIMARY KEY,
         server_id INTEGER UNIQUE, -- ID из PostgreSQL
         username TEXT NOT NULL,
         email TEXT UNIQUE NOT NULL,
