@@ -416,39 +416,65 @@ export const AuthProvider = ({ children }) => {
 
 
   // --- НАЧАЛО ИСПРАВЛЕННОГО БЛОКА НАЧИСЛЕНИЯ И СИНХРОНИЗАЦИИ ---
-  const completeTopic = (username, topicKey, topicId) => {
-    // Гарантируем, что ключ темы — это строка формата topic_ID
-    const finalKey = topicKey || `topic_${topicId}`;
+const completeTopic = async (username, topicKey, topicId) => {
+  const finalKey = topicKey || `topic_${topicId}`;
+  dbService.completeTopic(username, finalKey);
 
-    // Записываем прогресс в локальную базу SQLite
-    dbService.completeTopic(username, finalKey);
+  // 🌟 ИВТ-АЛГОРИТМ: Расчет и удержание ударного режима (Streak) по датам
+  try {
+    const todayStr = new Date().toISOString().split('T')[0]; // Генерируем строку '2026-05-31'
+    const lastActiveDate = await AsyncStorage.getItem(`last_active_${username}`);
+    
+    if (lastActiveDate !== todayStr) {
+      let newStreak = streak;
+      
+      if (lastActiveDate) {
+        const lastDate = new Date(lastActiveDate);
+        const todayDate = new Date(todayStr);
+        const diffTime = Math.abs(todayDate - lastDate);
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-    // Отправляем прогресс на сервер PostgreSQL и забираем монеты
-    apiClient.post('/api/progress', { topic_id: topicId })
-      .then((res) => {
-        if (res.data.success && res.data.reward) {
-          // Обновляем баланс монет в оперативной памяти приложения
-          setUser(prev => prev ? { ...prev, balance: (prev.balance || 0) + res.data.reward } : null);
+        if (diffDays === 1) {
+          // Пользователь занимался вчера -> Streak продлен!
+          newStreak = streak + 1;
+        } else if (diffDays > 1) {
+          // Пользователь пропустил день -> Сброс
+          newStreak = 1;
         }
-      })
-      .catch((e) => console.log('❌ Ошибка отправки прогресса на бэкенд:', e.message));
-
-    // Обновляем стейт выполненных курсов, чтобы галочки загорелись мгновенно
-    setCompletedCourses(prev => {
-      // Защита от undefined и дубликатов: собираем чистый массив строк
-      const currentList = Array.isArray(prev) ? prev : [];
-      const updated = [...new Set([...currentList, finalKey])];
-
-      // Считаем XP и проверяем триггеры глобальных достижений
-      const currentXP = (user?.balance || 0) + 50;
-      const award = checkAchievementTriggers(updated.length, streak, currentXP);
-
-      if (award) {
-        triggerAchievementPopUp(award);
+      } else {
+        // Первый заход и первый пройденный тест
+        newStreak = 1;
       }
-      return updated;
-    });
-  };
+
+      setStreak(newStreak);
+      await AsyncStorage.setItem(`last_active_${username}`, todayStr);
+      
+      // Кэшируем новый стрик в локальную SQLite
+      db.runSync('UPDATE users SET streak_count = ? WHERE username = ?;', [newStreak, username]);
+    }
+  } catch (streakErr) {
+    console.log('⚠️ Ошибка расчета ударного режима:', streakErr.message);
+  }
+
+  // Отправляем прогресс на сервер PostgreSQL и забираем монеты
+  apiClient.post('/api/progress', { topic_id: topicId })
+    .then((res) => {
+      if (res.data.success && res.data.reward) {
+        setUser(prev => prev ? { ...prev, balance: (prev.balance || 0) + res.data.reward } : null);
+      }
+    })
+    .catch((e) => console.log('❌ Ошибка отправки прогресса на бэкенд:', e.message));
+
+  setCompletedCourses(prev => {
+    const currentList = Array.isArray(prev) ? prev : [];
+    const updated = [...new Set([...currentList, finalKey])];
+    const currentXP = (user?.balance || 0) + 50;
+    const award = checkAchievementTriggers(updated.length, streak, currentXP);
+    if (award) triggerAchievementPopUp(award);
+    return updated;
+  });
+};
+
   // --- КОНЕЦ ИСПРАВЛЕННОГО БЛОКА ---
 
 

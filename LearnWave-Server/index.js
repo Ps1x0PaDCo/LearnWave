@@ -377,7 +377,7 @@ app.post('/api/user-delete-account', authMiddleware, async (req, res) => {
     try {
       console.log('??? Deleting user progress from "user_progress" table...');
       // Каскадно удаляем прогресс из таблицы user_progress по внешнему ключу
-      await pool.query('DELETE FROM user_progress WHERE user_id = $1', [userId]);
+      await pool.query('DELETE FROM progress WHERE user_id = $1', [userId]);
 
       console.log('??? Deleting user record from "users" table...');
       // Удаляем саму учетную запись

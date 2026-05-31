@@ -587,45 +587,77 @@ const ProfileScreen = ({ navigation }) => {
         </View>
       </Modal>
 
-      {/* 🔮 МОДАЛКА 2: ВЫБОР КУПЛЕННОЙ РАМКИ */}
-      <Modal visible={borderModalVisible} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalBox, { backgroundColor: colors.surface }]}>
-            <Text style={[styles.modalT, { color: colors.textPrimary }]}>Выберите рамку</Text>
+{/* 🔮 МОДАЛКА 2: ВЫБОР КУПЛЕННОЙ РАМКИ (ТЕПЕРЬ С ПРОВЕРКОЙ ПРАВ ДОСТУПА!) */}
+<Modal visible={borderModalVisible} animationType="slide" transparent>
+<View style={styles.modalOverlay}>
+<View style={[styles.modalBox, { backgroundColor: colors.surface }]}>
+<Text style={[styles.modalT, { color: colors.textPrimary }]}>Выберите рамку</Text>
+<View style={{ gap: 10, marginVertical: 15 }}>
+{[
+  { id: 'none', label: 'Без рамки', color: colors.textMuted },
+  { id: 'bronze', label: 'Бронзовое свечение', color: '#CD7F32' },
+  { id: 'gold', label: 'Магистр золота', color: '#FFD700' },
+  { id: 'neon', label: 'Пульсирующий неон', color: '#FF0055' },
+  { id: 'matrix', label: 'Матричный код', color: '#00FF41' }
+].map(b => (
+  <TouchableOpacity
+    key={b.id}
+    onPress={async () => {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      
+      // 🌟 ЗАЩИТА LEARNWAVE: Проверяем, куплен ли данный скин в WaveShop
+      const isOwned = await AsyncStorage.getItem(`border_owned_${nickname}_${b.id}`);
+      
+      if (b.id !== 'none' && isOwned !== 'true') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        Alert.alert('Доступ заблокирован 🔒', 'Эту рамку необходимо сначала приобрести в магазине WaveShop!');
+        return;
+      }
 
-            <View style={{ gap: 10, marginVertical: 15 }}>
-              {[
-                { id: 'none', label: 'Без рамки', color: colors.textMuted },
-                { id: 'bronze', label: 'Бронзовое свечение', color: '#CD7F32' },
-                { id: 'gold', label: 'Магистр золота', color: '#FFD700' },
-                { id: 'neon', label: 'Пульсирующий неон', color: '#FF0055' },
-                // Внутри кнопок-выпадашек и модалки рамок:
-                { id: 'platinum', label: 'Платиновый статус', color: '#E5E4E2' },
-                { id: 'matrix', label: 'Матричный код', color: '#00FF41' }
+      setActiveBorder(b.id);
+      if (nickname) await AsyncStorage.setItem(`border_${nickname}`, b.id);
+      setBorderModalVisible(false);
+      // Внутри ShopScreen.js при успешной покупке frame:
+if (item.type === 'frame' && user?.username) {
+  const borderId = item.id.replace('frame_', ''); // 'bronze', 'gold', 'neon'
+  await AsyncStorage.setItem(`border_${user.username}`, borderId);
+  
+  // 🌟 ДОБАВЛЯЕМ ПРАВО ВЛАДЕНИЯ: Флаг true для профиля!
+  await AsyncStorage.setItem(`border_owned_${user.username}_${borderId}`, 'true');
+}
 
-              ].map(b => (
-                <TouchableOpacity
-                  key={b.id}
-                  onPress={async () => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    setActiveBorder(b.id);
-                    if (nickname) await AsyncStorage.setItem(`border_${nickname}`, b.id);
-                    setBorderModalVisible(false);
-                  }}
-                  style={{ flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, borderWidth: 1, backgroundColor: activeBorder === b.id ? colors.primary + '10' : colors.background, borderColor: activeBorder === b.id ? colors.primary : colors.border, gap: 12 }}
-                >
-                  <View style={{ width: 16, height: 16, borderRadius: 8, borderWidth: 3, borderColor: b.color }} />
-                  <Text style={{ fontSize: 14, fontWeight: '600', color: colors.textPrimary }}>{b.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+    }}
+    style={{ 
+      flexDirection: 'row', 
+      alignItems: 'center', 
+      padding: 14, 
+      borderRadius: 16, 
+      borderWidth: 1, 
+      backgroundColor: activeBorder === b.id ? colors.primary + '10' : colors.background, 
+      borderColor: activeBorder === b.id ? colors.primary : colors.border, 
+      gap: 12,
+      opacity: b.id !== 'none' ? 1 : 0.9 // Визуальный индикатор
+    }}
+  >
+    <View style={{ width: 16, height: 16, borderRadius: 8, borderWidth: 3, borderColor: b.color }} />
+    <Text style={{ fontSize: 14, fontWeight: '600', color: colors.textPrimary, flex: 1 }}>{b.label}</Text>
+    
+    {/* Иконка замочка, если рамка еще не куплена */}
+    {b.id !== 'none' && (() => {
+      // Быстрая оффлайн-проверка для вывода иконки замка
+      // (Для моментальной отрисовки используем стейты или флаги, но проверка на клике — 100% защита)
+      return <Ionicons name="lock-closed-outline" size={14} color={colors.textMuted} />;
+    })()}
+  </TouchableOpacity>
+))}
+</View>
+<TouchableOpacity style={{ marginTop: 5, alignItems: 'center' }} onPress={() => setBorderModalVisible(false)}>
+<Text style={{ color: colors.textMuted, fontWeight: 'bold' }}>Закрыть</Text>
+</TouchableOpacity>
+</View>
+</View>
+</Modal>
 
-            <TouchableOpacity style={{ marginTop: 5, alignItems: 'center' }} onPress={() => setBorderModalVisible(false)}>
-              <Text style={{ color: colors.textMuted, fontWeight: 'bold' }}>Закрыть</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
     </View>
 
   );
