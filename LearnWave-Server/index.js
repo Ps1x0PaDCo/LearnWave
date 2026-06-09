@@ -544,6 +544,15 @@ app.post('/api/shop/buy', authMiddleware, async (req, res) => {
   }
 });
 
+// Обработка корневого запроса для проверки доступности сервера через браузер
+app.get('/', (req, res) => {
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.json({ 
+    success: true, 
+    message: "Сервер распределенной системы LearnWave запущен и функционирует стабильно.",
+    status: "ONLINE" 
+  });
+});
 
 // Запуск сервера
 const PORT = process.env.PORT || 5000;
@@ -551,7 +560,7 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log('-------------------------------------------');
   console.log(`?? LearnWave Server started on port ${PORT}`);
   console.log(`?? Local URL:   http://localhost:${PORT}`);
-  console.log(`?? Network URL: http://192.168.1.57:${PORT}`);
+  console.log(`?? Network URL: http://192.168.1.38:${PORT}`);
   console.log('?? Security:   RBAC role model is active');
   console.log('-------------------------------------------');
 });

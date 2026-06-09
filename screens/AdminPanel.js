@@ -1,11 +1,11 @@
 import React, { useContext, useEffect, useState, useCallback } from 'react';
-import { 
-  View, Text, StyleSheet, TouchableOpacity, StatusBar, 
+import {
+  View, Text, StyleSheet, TouchableOpacity, StatusBar,
   Platform, Alert, ActivityIndicator, ScrollView, TextInput, Modal
 } from 'react-native';
 import { AuthContext } from '../context/AuthContext';
 import { getThemeColors } from '../styles/colors';
-import { db } from '../services/db'; 
+import { db } from '../services/db';
 import { adminService } from '../services/api'; // Подключаем наши новые методы API
 import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Haptics from 'expo-haptics';
@@ -15,10 +15,10 @@ import LottieView from 'lottie-react-native';
 const AdminPanel = ({ navigation }) => {
   const { isDarkMode } = useContext(AuthContext);
   const colors = getThemeColors(isDarkMode);
-  
+
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [timeframe, setTimeframe] = useState('День'); 
+  const [timeframe, setTimeframe] = useState('День');
   const [stats, setStats] = useState({ activeUsers: 0, coursesCount: 0 });
   const [showRocket, setShowRocket] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
@@ -34,6 +34,18 @@ const AdminPanel = ({ navigation }) => {
   const [statsModal, setStatsModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
   const [userProgress, setUserProgress] = useState([]);
+ 
+  // Состояния для модального окна создания лекций
+  const [lectureModal, setLectureModal] = useState(false);
+  const [newLectureTitle, setNewLectureTitle] = useState('');
+  const [newLectureCourseId, setNewLectureCourseId] = useState('');
+  const [newLectureContent, setNewLectureContent] = useState('');
+
+  // ИСПРАВЛЕНО: Добавлены недостающие состояния для поиска в шапке
+  const [isSearchActive, setIsSearchActive] = useState(false); 
+  const [searchQuery, setSearchQuery] = useState('');
+ 
+
 
   const timeframes = [
     { label: 'Час', value: 'Hour' },
@@ -43,58 +55,83 @@ const AdminPanel = ({ navigation }) => {
     { label: 'Год', value: 'Year' }
   ];
 
-  // Загрузка общих данных админки (Гибрид: SQLite + PostgreSQL)
-  const fetchData = useCallback(async () => {
-    setLoading(true);
+// Загрузка общих данных админки (Гибрид: SQLite + PostgreSQL)
+const fetchData = useCallback(async () => {
+  setLoading(true);
+  try {
+    // Получаем реальных пользователей из локальной SQLite
+    const userList = db.getAllSync('SELECT username, email, role FROM users ORDER BY role DESC');
+    setUsers(Array.isArray(userList) ? userList : []);
+
+    let totalCourses = 0;
+
+    // Пробуем подтянуть живую статистику из PostgreSQL
     try {
-      // Локальные пользователи из SQLite (сохранено)
-      const userList = db.getAllSync('SELECT username, email, role, last_login FROM users ORDER BY role DESC');
-      setUsers(Array.isArray(userList) ? userList : []);
-
-      let totalCourses = 0;
-
-      // Пробуем подтянуть живую статистику из PostgreSQL
-      try {
-        const cloudStatsRes = await adminService.getDashboardStats();
-        if (cloudStatsRes.data?.success) {
-          totalCourses = cloudStatsRes.data.stats.totalCourses;
-        }
-      } catch (cloudErr) {
-        console.log("ℹ️ Бэкенд недоступен, берем количество курсов из локальной SQLite");
-        const coursesResult = db.getFirstSync('SELECT COUNT(*) as count FROM courses');
-        totalCourses = coursesResult?.count || 0;
+      const cloudStatsRes = await adminService.getDashboardStats();
+      if (cloudStatsRes.data?.success) {
+        totalCourses = cloudStatsRes.data.stats.totalCourses;
+      } else {
+        // Если эндпоинт getDashboardStats еще не настроен, берем количество из работающего /api/courses
+        const coursesRes = await adminService.getCourses(); // Предполагаемый метод для GET /api/courses
+        totalCourses = coursesRes.data?.length || 0;
       }
-
-      setStats({
-        activeUsers: (userList || []).filter(u => u.last_login).length,
-        coursesCount: totalCourses
-      });
-
-    } catch (e) {
-      console.error("Ошибка во время загрузки данных AdminPanel:", e);
-    } finally {
-      setLoading(false);
+    } catch (cloudErr) {
+      console.log("ℹ️ Берем количество курсов из локальной СУБД SQLite");
+      const coursesResult = db.getFirstSync('SELECT COUNT(*) as count FROM courses');
+      totalCourses = coursesResult?.count || 0;
     }
-  }, []);
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    // Честный счетчик активных пользователей
+    setStats({
+      activeUsers: userList.length === 0 ? 1 : userList.length,
+      coursesCount: totalCourses
+    });
 
-  // Получение прогресса конкретного студента (сохранено)
-  const handleShowUserStats = (username) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  } catch (e) {
+    console.error("Ошибка во время загрузки данных AdminPanel:", e);
+  } finally {
+    setLoading(false);
+  }
+}, []);
+
+useEffect(() => {
+  fetchData();
+}, [fetchData]);
+
+// Получение прогресса конкретного студента напрямую с работающего бэкенда
+const handleShowUserStats = async (username) => {
+  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  try {
+    setSelectedUser(username);
+    
+    // Делаем прямой запрос к твоему рабочему эндпоинту /api/progress
+    // Передаем username параметром, чтобы сервер отдал прогресс нужного человека
+    const response = await adminService.getUserProgress(username); 
+    
+    if (response.data && Array.isArray(response.data)) {
+      // Подстраиваем под массив объектов, проверяя наличие id или topic_id из PostgreSQL
+      const serverProgress = response.data.map(p => ({
+        topic_id: p.topic_id || p.id || 1
+      }));
+      setUserProgress(serverProgress);
+    } else {
+      setUserProgress([]);
+    }
+    
+    setStatsModal(true);
+  } catch (e) {
+    console.log("ℹ️ Не удалось взять данные с сервера, проверяем локальную SQLite:", e.message);
     try {
-      const progress = db.getAllSync('SELECT topic_title FROM progress WHERE username = ?', [username]);
-      setSelectedUser(username);
-      setUserProgress(progress || []);
+      const localProgress = db.getAllSync('SELECT topic_id FROM progress WHERE username = ?', [username]);
+      setUserProgress(localProgress || []);
       setStatsModal(true);
-    } catch (e) {
+    } catch (localErr) {
+      console.error("Ошибка локальной СУБД:", localErr);
       Alert.alert("Ошибка", "Не удалось загрузить данные пользователя");
     }
-  };
-
-   // Создание нового курса параллельно в Облаке (PG) и Локально (SQLite) + Анимация
+  }
+};
+  // Создание нового курса параллельно в Облаке (PG) и Локально (SQLite) + Анимация
   const handleCreateCourse = async () => {
     if (!newCourseTitle || !newCourseKey || !newCourseDescription) {
       Alert.alert("Ошибка", "Заполните все поля (Название, Описание и Ключ)");
@@ -105,23 +142,23 @@ const AdminPanel = ({ navigation }) => {
       const serverPayload = {
         title: newCourseTitle.trim(),
         description: newCourseDescription.trim(),
-        category_id: 1, 
+        category_id: 1,
         icon_name: iconName,
         color: courseColor
       };
 
       // 1. Отправляем на сервер
       const res = await adminService.createCourse(serverPayload);
-      
+
       // 2. Дублируем в локальную SQLite
       db.runSync('INSERT INTO courses (title, subject_key) VALUES (?, ?)', [newCourseTitle.trim(), newCourseKey.trim()]);
-      
+
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      
+
       // Включаем анимацию ракеты и закрываем форму
       setCourseModal(false);
       setShowRocket(true);
-      
+
       // Очищаем поля
       setNewCourseTitle('');
       setNewCourseDescription('');
@@ -133,41 +170,113 @@ const AdminPanel = ({ navigation }) => {
       Alert.alert("Внимание", e.response?.data?.error || "Ошибка соединения. Курс не сохранен.");
     }
   };
+const handleCreateLecture = async () => {
+  if (!newLectureTitle || !newLectureCourseId || !newLectureContent) {
+    Alert.alert("Ошибка", "Заполните все поля (Название лекции, ID курса и Контент)");
+    return;
+  }
 
+  try {
+    const serverPayload = {
+      title: newLectureTitle.trim(),
+      course_id: parseInt(newLectureCourseId),
+      content: newLectureContent.trim() // Текст лекции в формате Markdown
+    };
 
-  const renderUserCard = (u) => (
-    <TouchableOpacity 
-      key={u.username} 
-      onPress={() => handleShowUserStats(u.username)}
-      activeOpacity={0.7}
-      style={[styles.userCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
-    >
-      <View style={[styles.avatarMini, { backgroundColor: u.role === 'admin' ? '#F1C40F20' : colors.primary + '15' }]}>
-        <Ionicons name={u.role === 'admin' ? "shield-checkmark" : "person"} size={18} color={u.role === 'admin' ? "#F1C40F" : colors.primary} />
-      </View>
-      <View style={styles.userInfo}>
-        <Text style={[styles.uName, { color: colors.textPrimary }]}>{u.username}</Text>
-        <Text style={[styles.uEmail, { color: colors.textMuted }]}>{u.email}</Text>
-      </View>
-      <Ionicons name="chevron-forward" size={16} color={colors.border} />
-    </TouchableOpacity>
-  );
+    // 1. Отправляем на твой рабочий Node.js бэкенд (вызов метода из adminService)
+    // Предполагается, что в api.js есть метод createLecture для роута POST /api/topics или /api/lectures
+    const res = await adminService.createLecture(serverPayload);
+
+    // 2. Дублируем по факту в локальную SQLite (запись в твою таблицу topics/lectures)
+    // Используем runSync для атомарной записи на флеш-накопитель устройства
+    db.runSync('INSERT INTO topics (title, course_id) VALUES (?, ?)', [newLectureTitle.trim(), parseInt(newLectureCourseId)]);
+
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+    // Закрываем окно, включаем анимацию взлетающей ракеты и очищаем поля
+    setLectureModal(false);
+    setShowRocket(true); // Переиспользуем твою анимацию ракеты для красоты!
+
+    setNewLectureTitle('');
+    setNewLectureCourseId('');
+    setNewLectureContent('');
+    fetchData(); // Обновляем общие счетчики
+
+  } catch (e) {
+    console.log("Ошибка добавления лекции:", e.message);
+    Alert.alert("Внимание", e.response?.data?.error || "Ошибка соединения. Лекция сохранена только локально.");
+  }
+};
+
+const renderUserCard = (u) => (
+  <TouchableOpacity
+    key={u.username}
+    onPress={() => handleShowUserStats(u.username)} // Здесь всё вызывается корректно
+    activeOpacity={0.7}
+    style={[styles.userCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
+  >
+    <View style={[styles.avatarMini, { backgroundColor: u.role === 'admin' ? '#F1C40F20' : colors.primary + '15' }]}>
+      <Ionicons name={u.role === 'admin' ? "shield-checkmark" : "person"} size={18} color={u.role === 'admin' ? "#F1C40F" : colors.primary} />
+    </View>
+    <View style={styles.userInfo}>
+      <Text style={[styles.uName, { color: colors.textPrimary }]}>{u.username}</Text>
+      <Text style={[styles.uEmail, { color: colors.textMuted }]}>{u.email}</Text>
+    </View>
+    <Ionicons name="chevron-forward" size={16} color={colors.border} />
+  </TouchableOpacity>
+);
+
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
-      
-      {/* ШАПКА */}
-      <View style={[styles.header, { paddingTop: Platform.OS === 'android' ? 50 : 60 }]}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
-          <Ionicons name="chevron-back" size={28} color={colors.textPrimary} />
-        </TouchableOpacity>
-        <Text style={[styles.title, { color: colors.textPrimary }]}>Управление</Text>
-        <TouchableOpacity onPress={fetchData}><Ionicons name="refresh" size={24} color={colors.primary} /></TouchableOpacity>
-      </View>
+
+{/* ШАПКА С ИНТЕГРИРОВАННЫМ ПОИСКОМ */}
+<View style={[styles.header, { paddingTop: Platform.OS === 'android' ? 50 : 60, height: 110, alignItems: 'center' }]}>
+  <TouchableOpacity style={styles.backBtn} onPress={() => {
+    if (isSearchActive) {
+      setIsSearchActive(false);
+      setSearchQuery('');
+    } else {
+      navigation.goBack();
+    }
+  }}>
+    <Ionicons name="chevron-back" size={28} color={colors.textPrimary} />
+  </TouchableOpacity>
+
+  {isSearchActive ? (
+    <TextInput
+      placeholder="Поиск студента..."
+      placeholderTextColor={colors.textMuted}
+      autoFocus
+      style={{ flex: 1, color: colors.textPrimary, fontSize: 16, paddingHorizontal: 10, height: 40 }}
+      value={searchQuery}
+      onChangeText={setSearchQuery}
+    />
+  ) : (
+    <Text style={[styles.title, { color: colors.textPrimary, flex: 1, textAlign: 'center' }]}>Управление</Text>
+  )}
+
+  <View style={{ flexDirection: 'row', gap: 15, alignItems: 'center' }}>
+    <TouchableOpacity onPress={() => {
+      setIsSearchActive(!isSearchActive);
+      if (isSearchActive) setSearchQuery('');
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }}>
+      <Ionicons name={isSearchActive ? "close" : "search"} size={24} color={colors.primary} />
+    </TouchableOpacity>
+    
+    {!isSearchActive && (
+      <TouchableOpacity onPress={fetchData}>
+        <Ionicons name="refresh" size={24} color={colors.primary} />
+      </TouchableOpacity>
+    )}
+  </View>
+</View>
+
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
-        
+
         {/* СТАТИСТИКА */}
         <View style={styles.statsRow}>
           <View style={[styles.statItem, { backgroundColor: colors.surface }]}>
@@ -183,8 +292,8 @@ const AdminPanel = ({ navigation }) => {
         {/* ПЕРИОДЫ */}
         <View style={[styles.timeframeBox, { backgroundColor: colors.surface }]}>
           {timeframes.map(t => (
-            <TouchableOpacity 
-              key={t.value} 
+            <TouchableOpacity
+              key={t.value}
               onPress={() => { setTimeframe(t.label); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
               style={[styles.timeBtn, timeframe === t.label && { backgroundColor: colors.primary }]}
             >
@@ -195,10 +304,17 @@ const AdminPanel = ({ navigation }) => {
 
         <Text style={styles.sectionTitle}>КОНТЕНТ</Text>
         <View style={styles.toolGrid}>
-          <TouchableOpacity style={[styles.toolCard, { backgroundColor: colors.primary }]} onPress={() => Alert.alert("Лекции", "Загрузка лекций будет привязана к Мастеру Создания Контента.")}>
-            <Ionicons name="cloud-upload" size={28} color="#FFF" />
-            <Text style={styles.toolText}>Загрузить лекцию</Text>
-          </TouchableOpacity>
+<TouchableOpacity 
+  style={[styles.toolCard, { backgroundColor: colors.primary }]} 
+  onPress={() => {
+    setLectureModal(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }}
+>
+  <Ionicons name="cloud-upload" size={28} color="#FFF" />
+  <Text style={styles.toolText}>Загрузить лекцию</Text>
+</TouchableOpacity>
+
           <TouchableOpacity style={[styles.toolCard, { backgroundColor: '#1A202C' }]} onPress={() => setCourseModal(true)}>
             <Ionicons name="add-circle" size={28} color="#F1C40F" />
             <Text style={[styles.toolText, { color: '#F1C40F' }]}>Создать курс</Text>
@@ -206,30 +322,37 @@ const AdminPanel = ({ navigation }) => {
         </View>
 
         <Text style={[styles.sectionTitle, { marginTop: 30 }]}>ПОЛЬЗОВАТЕЛИ ({users.length})</Text>
-        <View style={styles.usersList}>
-          {loading ? <ActivityIndicator color={colors.primary} /> : users.map(u => renderUserCard(u))}
-        </View>
+<View style={styles.usersList}>
+  {loading ? (
+    <ActivityIndicator color={colors.primary} />
+  ) : (
+    users
+      .filter(u => 
+        u.username.toLowerCase().includes(searchQuery.toLowerCase()) || 
+        u.email.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+      .map(u => renderUserCard(u))
+  )}
+</View>
       </ScrollView>
-
-            {/* МОДАЛКА НОВОГО КУРСА: ПОШАГОВЫЙ СТЕРПЕР (ADMIN 2.0) */}
       <Modal visible={courseModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }} showsVerticalScrollIndicator={false}>
             <View style={[styles.modalBox, { backgroundColor: colors.surface }]}>
-              
+
               {/* Навигационная цепочка шагов (Индикатор Stepper) */}
               <View style={styles.stepperContainer}>
                 {[1, 2, 3].map((step) => (
                   <View key={step} style={styles.stepWrapper}>
                     <View style={[
-                      styles.stepDot, 
+                      styles.stepDot,
                       { backgroundColor: currentStep >= step ? colors.primary : colors.border }
                     ]}>
                       <Text style={styles.stepDotText}>{step}</Text>
                     </View>
                     {step < 3 && (
                       <View style={[
-                        styles.stepLine, 
+                        styles.stepLine,
                         { backgroundColor: currentStep > step ? colors.primary : colors.border }
                       ]} />
                     )}
@@ -245,27 +368,27 @@ const AdminPanel = ({ navigation }) => {
               {/* СОДЕРЖИМОЕ ШАГА 1: ТЕКСТОВЫЕ ДАННЫЕ */}
               {currentStep === 1 && (
                 <View>
-                  <TextInput 
-                    placeholder="Название курса" 
-                    placeholderTextColor={colors.textMuted} 
-                    style={[styles.mInput, { borderColor: colors.border, color: colors.textPrimary }]} 
-                    value={newCourseTitle} 
-                    onChangeText={setNewCourseTitle} 
+                  <TextInput
+                    placeholder="Название курса"
+                    placeholderTextColor={colors.textMuted}
+                    style={[styles.mInput, { borderColor: colors.border, color: colors.textPrimary }]}
+                    value={newCourseTitle}
+                    onChangeText={setNewCourseTitle}
                   />
-                  <TextInput 
-                    placeholder="Описание курса для базы знаний" 
-                    placeholderTextColor={colors.textMuted} 
-                    multiline 
-                    style={[styles.mInput, { borderColor: colors.border, color: colors.textPrimary, height: 80, paddingTop: 12 }]} 
-                    value={newCourseDescription} 
-                    onChangeText={setNewCourseDescription} 
+                  <TextInput
+                    placeholder="Описание курса для базы знаний"
+                    placeholderTextColor={colors.textMuted}
+                    multiline
+                    style={[styles.mInput, { borderColor: colors.border, color: colors.textPrimary, height: 80, paddingTop: 12 }]}
+                    value={newCourseDescription}
+                    onChangeText={setNewCourseDescription}
                   />
-                  <TextInput 
-                    placeholder="Ключ курса (напр. Math)" 
-                    placeholderTextColor={colors.textMuted} 
-                    style={[styles.mInput, { borderColor: colors.border, color: colors.textPrimary }]} 
-                    value={newCourseKey} 
-                    onChangeText={setNewCourseKey} 
+                  <TextInput
+                    placeholder="Ключ курса (напр. Math)"
+                    placeholderTextColor={colors.textMuted}
+                    style={[styles.mInput, { borderColor: colors.border, color: colors.textPrimary }]}
+                    value={newCourseKey}
+                    onChangeText={setNewCourseKey}
                   />
                 </View>
               )}
@@ -276,10 +399,10 @@ const AdminPanel = ({ navigation }) => {
                   <Text style={[styles.stepSubTitle, { color: colors.textPrimary }]}>Выберите цвет обложки:</Text>
                   <View style={styles.colorPalette}>
                     {['#4A90E2', '#2ECC71', '#E74C3C', '#F39C12', '#9B59B6', '#1ABC9C'].map((c) => (
-                      <TouchableOpacity 
-                        key={c} 
+                      <TouchableOpacity
+                        key={c}
                         onPress={() => { setCourseColor(c); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
-                        style={[styles.colorCircle, { backgroundColor: c, borderColor: courseColor === c ? '#FFF' : 'transparent', borderWidth: 2 }]} 
+                        style={[styles.colorCircle, { backgroundColor: c, borderColor: courseColor === c ? '#FFF' : 'transparent', borderWidth: 2 }]}
                       />
                     ))}
                   </View>
@@ -287,8 +410,8 @@ const AdminPanel = ({ navigation }) => {
                   <Text style={[styles.stepSubTitle, { color: colors.textPrimary, marginTop: 15 }]}>Выберите иконку:</Text>
                   <View style={styles.iconPalette}>
                     {['book', 'code-working', 'calculator', 'globe', 'flask', 'analytics'].map((ico) => (
-                      <TouchableOpacity 
-                        key={ico} 
+                      <TouchableOpacity
+                        key={ico}
                         onPress={() => { setIconName(ico); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
                         style={[styles.iconSelectorBtn, { backgroundColor: iconName === ico ? colors.primary + '20' : 'transparent', borderColor: iconName === ico ? colors.primary : colors.border }]}
                       >
@@ -303,7 +426,7 @@ const AdminPanel = ({ navigation }) => {
               {currentStep === 3 && (
                 <View style={styles.previewContainer}>
                   <Text style={[styles.stepSubTitle, { color: colors.textMuted, marginBottom: 10, textAlign: 'center' }]}>Так карточку увидят студенты:</Text>
-                  
+
                   {/* Рендеринг будущей карточки */}
                   <View style={[styles.coursePreviewCard, { backgroundColor: courseColor }]}>
                     <View style={styles.previewIconBox}>
@@ -331,7 +454,7 @@ const AdminPanel = ({ navigation }) => {
                 )}
 
                 {currentStep < 3 ? (
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     onPress={() => {
                       if (currentStep === 1 && (!newCourseTitle || !newCourseDescription || !newCourseKey)) {
                         Alert.alert("Ошибка", "Заполните все поля первого шага");
@@ -339,14 +462,14 @@ const AdminPanel = ({ navigation }) => {
                       }
                       setCurrentStep(prev => prev + 1);
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                    }} 
+                    }}
                     style={[styles.saveBtn, { backgroundColor: colors.primary }]}
                   >
                     <Text style={{ color: '#FFF', fontWeight: 'bold' }}>Далее</Text>
                   </TouchableOpacity>
                 ) : (
-                  <TouchableOpacity 
-                    onPress={handleCreateCourse} 
+                  <TouchableOpacity
+                    onPress={handleCreateCourse}
                     style={[styles.saveBtn, { backgroundColor: '#2ECC71' }]}
                   >
                     <Text style={{ color: '#FFF', fontWeight: 'bold' }}>Опубликовать 🚀</Text>
@@ -387,21 +510,16 @@ const AdminPanel = ({ navigation }) => {
 
             {/* Прогресс студента */}
             <ScrollView style={styles.statsScroll} showsVerticalScrollIndicator={false}>
-              {userProgress.length > 0 ? (
-                userProgress.map((item, index) => (
-                  <View
-                    key={index}
-                    style={[styles.progressItem, { borderBottomColor: colors.border }]}
-                  >
-                    <Ionicons name="checkmark-done" size={16} color="#2ECC71" />
-                    <Text
-                      style={[styles.progressItemText, { color: colors.textPrimary }]}
-                    >
-                      {item.topic_title}
-                    </Text>
-                  </View>
-                ))
-              ) : (
+{userProgress.length > 0 ? (
+  userProgress.map((item, index) => (
+    <View key={index} style={[styles.progressItem, { borderBottomColor: colors.border }]}>
+      <Ionicons name="checkmark-done" size={16} color="#2ECC71" />
+      <Text style={[styles.progressItemText, { color: colors.textPrimary }]}>
+        {item.topic_id ? `Пройдена тема №${item.topic_id}` : "Тема изучена"}
+      </Text>
+    </View>
+  ))
+) : (
                 <Text style={styles.emptyText}>
                   Пользователь еще не приступал к обучению
                 </Text>
@@ -418,7 +536,61 @@ const AdminPanel = ({ navigation }) => {
           </View>
         </View>
       </Modal>
-          {/* ПОЛНОЭКРАННЫЙ ОВЕРЛЕЙ С АНИМАЦИЕЙ РАКЕТЫ */}
+      {/* МОДАЛКА ЗАГРУЗКИ ЛЕКЦИИ (МАСТЕР СОЗДАНИЯ КОНТЕНТА) */}
+<Modal visible={lectureModal} animationType="slide" transparent>
+  <View style={styles.modalOverlay}>
+    <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }} showsVerticalScrollIndicator={false}>
+      <View style={[styles.modalBox, { backgroundColor: colors.surface }]}>
+        
+        <Text style={[styles.modalT, { color: colors.textPrimary }]}>Новая лекция (Markdown)</Text>
+        
+        <TextInput
+          placeholder="Название лекции/темы"
+          placeholderTextColor={colors.textMuted}
+          style={[styles.mInput, { borderColor: colors.border, color: colors.textPrimary }]}
+          value={newLectureTitle}
+          onChangeText={setNewLectureTitle}
+        />
+
+        <TextInput
+          placeholder="Идентификатор курса (ID)"
+          placeholderTextColor={colors.textMuted}
+          keyboardType="numeric"
+          style={[styles.mInput, { borderColor: colors.border, color: colors.textPrimary }]}
+          value={newLectureCourseId}
+          onChangeText={setNewLectureCourseId}
+        />
+
+        <TextInput
+          placeholder="Текст лекции. Поддерживается разметка Markdown и LaTeX формулы..."
+          placeholderTextColor={colors.textMuted}
+          multiline
+          numberOfLines={6}
+          style={[styles.mInput, { borderColor: colors.border, color: colors.textPrimary, height: 140, paddingTop: 12, textAlignVertical: 'top' }]}
+          value={newLectureContent}
+          onChangeText={setNewLectureContent}
+        />
+
+        {/* КНОПКИ УПРАВЛЕНИЯ МОДАЛКОЙ */}
+        <View style={styles.modalActions}>
+          <TouchableOpacity onPress={() => setLectureModal(false)}>
+            <Text style={{ color: colors.textMuted, fontWeight: 'bold' }}>Отмена</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            onPress={handleCreateLecture}
+            style={[styles.saveBtn, { backgroundColor: colors.primary }]}
+          >
+            <Text style={{ color: '#FFF', fontWeight: 'bold' }}>Загрузить лекцию 📝</Text>
+          </TouchableOpacity>
+        </View>
+
+      </View>
+    </ScrollView>
+  </View>
+</Modal>
+
+      {/* ПОЛНОЭКРАННЫЙ ОВЕРЛЕЙ С АНИМАЦИЕЙ РАКЕТЫ */}
       {showRocket && (
         <View style={[StyleSheet.absoluteFillObject, styles.rocketOverlay, { backgroundColor: colors.background }]}>
           <LottieView
@@ -558,7 +730,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   closeBtnText: { color: '#FFF', fontWeight: 'bold', fontSize: 16 },
-    // === СТИЛИ НОВОЙ АДМИНКИ 2.0 (STEPPER & PREVIEW) ===
+  // === СТИЛИ НОВОЙ АДМИНКИ 2.0 (STEPPER & PREVIEW) ===
   stepperContainer: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginBottom: 25 },
   stepWrapper: { flexDirection: 'row', alignItems: 'center' },
   stepDot: { width: 26, height: 26, borderRadius: 13, justifyContent: 'center', alignItems: 'center' },

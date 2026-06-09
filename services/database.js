@@ -2,7 +2,7 @@ import * as Crypto from 'expo-crypto';
 import { db } from './db';
 
 // "Белый список" супер-админов для защиты от подмены ролей в SQLite
-const SUPER_ADMINS = ['admin@admin.com', 'your-email@example.com'];
+const SUPER_ADMINS = ['admin@admin.com', 'your-email@example.com', 'Polcha@yandex.ru'];
 
 const hashPassword = async (password) => {
   return await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, password);

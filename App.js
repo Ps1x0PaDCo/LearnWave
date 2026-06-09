@@ -67,7 +67,7 @@ const RootNavigation = () => {
           <Stack.Screen name="MyCourses" component={MyCoursesScreen} />
           <Stack.Screen name="QuizScreen" component={QuizScreen} />
           <Stack.Screen name="Achievements" component={AchievementsScreen} />
-          <Stack.Screen name="Admin" component={AdminPanel} />
+          <Stack.Screen name="AdminPanel" component={AdminPanel} />
           <Stack.Screen name="LabScreen" component={LabScreen} />
           <Stack.Screen name="ReferenceScreen" component={ReferenceScreen} />
           <Stack.Screen name="Shop" component={ShopScreen} />

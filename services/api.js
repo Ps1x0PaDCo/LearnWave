@@ -3,14 +3,13 @@ import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DeviceEventEmitter } from 'react-native';
 
-import { BASE_URL } from '../config'; // ?? Подтяни правильный относительный путь до config.js
+import { BASE_URL } from '../config'; 
 
 const apiClient = axios.create({
-  // ?? ИСПРАВЛЕНО: Указали прямой локальный IP ноутбука в Wi-Fi сети для работы на реальном смартфоне
-  baseURL: 'http://192.168.1.57:5000', 
-  timeout: 10000, // Рекомендую добавить таймаут 10 секунд, чтобы приложение не висло бесконечно при сбоях сети
+  // Добавлен обязательный префикс путей под архитектуру монолитного сервера
+  baseURL: 'https://learnwave-test.loca.lt', 
+  timeout: 10000, 
 });
-
 
 // ==========================================
 // 1. ИНТЕРЦЕПТОР ЗАПРОСОВ (Авто-добавление токена)
@@ -20,7 +19,6 @@ apiClient.interceptors.request.use(
     try {
       const token = await SecureStore.getItemAsync('user_token');
       if (token) {
-        // Автоматически прикрепляем JWT-токен к каждому запросу в облако
         config.headers.Authorization = `Bearer ${token}`;
       }
     } catch (error) {
@@ -37,7 +35,6 @@ apiClient.interceptors.request.use(
 apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
-    // Если сервер вернул 401 (Сессия истекла / Токен невалиден)
     if (error.response && error.response.status === 401) {
       console.log('?? [API Client] Токен протух (401). Отправляем событие разлогина...');
 
@@ -45,7 +42,6 @@ apiClient.interceptors.response.use(
         await SecureStore.deleteItemAsync('user_token');
         await AsyncStorage.removeItem('current_user');
 
-        // ?? ИСПРАВЛЕНО: Вместо прямого вызова хука, шлем безопасное системное событие
         DeviceEventEmitter.emit('FORCE_LOGOUT');
       } catch (cleanError) {
         console.log('? [API Client] Ошибка при очистке кэша устройства:', cleanError.message);
@@ -54,10 +50,29 @@ apiClient.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+// ==========================================
+// 3. СЕРВИС АДМИНИСТРИРОВАНИЯ (Связующий контур для AdminPanel)
+// ==========================================
+export const adminService = {
+  // Получение живой статистики (курсы, сессии) с сервера
+  getDashboardStats: () => apiClient.get('/api/admin/stats'), // или твой точный роут статистики
+  
+  // Получение списка всех курсов для подсчета
+  getCourses: () => apiClient.get('/api/courses'),
 
-// Сервис профиля (сохраняем твою структуру)
+  // ПО ФАКТУ: Прямой сетевой запрос к твоему работающему эндпоинту прогресса
+  getUserProgress: (username) => apiClient.get('/api/progress', { params: { username } }),
+
+  // Создание нового курса
+  createCourse: (payload) => apiClient.post('/api/courses', payload),
+
+  // Загрузка новой лекции/темы
+  createLecture: (payload) => apiClient.post('/api/topics', payload),
+};
+
 export const profileService = {
-  deleteAccount: (password) => apiClient.post('/api/user-delete-account', { password }),
+  // Путь сокращен, так как префикс /api теперь автоматически подставляется клиентом
+  deleteAccount: (password) => apiClient.post('/user-delete-account', { password }),
 };
 
 export default apiClient;

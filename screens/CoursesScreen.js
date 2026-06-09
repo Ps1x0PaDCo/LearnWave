@@ -21,15 +21,15 @@ const CoursesScreen = ({ navigation }) => {
     const loadAllData = async () => {
       setLoading(true);
       try {
-        console.log("📡 [Courses] Запрос динамического каталога...");
+        console.log("?? [Courses] Запрос динамического каталога...");
         const response = await apiClient.get('/api/courses'); 
         
         if (response.data.success) {
-          console.log("✅ [Courses] Структура каталога получена:", response.data.categories.length);
+          console.log("? [Courses] Структура каталога получена:", response.data.categories.length);
           setCatalog(response.data.categories);
         }
       } catch (err) {
-        console.log("❌ [Courses] Ошибка получения каталога:", err.message);
+        console.log("? [Courses] Ошибка получения каталога:", err.message);
       } finally {
         setLoading(false);
       }
@@ -41,7 +41,7 @@ const CoursesScreen = ({ navigation }) => {
     if (!key) return; 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     
-    console.log(`📱 [Navigation] Переход на визитку курса: ${name} (${key})`);
+    console.log(`?? [Navigation] Переход на визитку курса: ${name} (${key})`);
     
     navigation.navigate('SubjectSelection', { 
       subjectKey: key, 
@@ -92,15 +92,15 @@ const CoursesScreen = ({ navigation }) => {
               {category.subjects.map((sub) => {
                 // Преобразуем строковые имена иконок в Emoji
                 const emojiMap = {
-                  'book': '📚',
-                  'code': '💻',
-                  'calculator': '🧮',
-                  'flask': '🧪',
-                  'school': '🏫',
-                  'atom': '⚛️',
-                  'brain': '🧠'
+                  'book': '??',
+                  'code': '??',
+                  'calculator': '??',
+                  'flask': '??',
+                  'school': '??',
+                  'atom': '??',
+                  'brain': '??'
                 };
-                const currentEmoji = emojiMap[sub.icon_name] || '🚀';
+                const currentEmoji = emojiMap[sub.icon_name] || '??';
                 const courseColor = sub.color || category.color || colors.primary;
 
                 return (

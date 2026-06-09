@@ -38,7 +38,6 @@ const ShopScreen = ({ navigation }) => {
 
     };
 
-  // 🌟 ИСПРАВЛЕНО: Объединенная атомарная функция покупки (Рамки + Бустеры)
   const handleBuy = async (item) => {
     if ((user?.balance || 0) < item.price) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
