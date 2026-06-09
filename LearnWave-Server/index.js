@@ -1,5 +1,3 @@
-
-
 const express = require('express');
 const cors = require('cors');
 const { Pool } = require('pg');
@@ -15,7 +13,6 @@ app.use((req, res, next) => {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   next();
 });
-
 
 // Логирование запросов в консоль
 app.use((req, res, next) => {
@@ -542,16 +539,6 @@ app.post('/api/shop/buy', authMiddleware, async (req, res) => {
     console.error('? Ошибка транзакции магазина:', err.message);
     res.status(500).json({ success: false, error: 'Ошибка сервера при обработке покупки.' });
   }
-});
-
-// Обработка корневого запроса для проверки доступности сервера через браузер
-app.get('/', (req, res) => {
-  res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  res.json({ 
-    success: true, 
-    message: "Сервер распределенной системы LearnWave запущен и функционирует стабильно.",
-    status: "ONLINE" 
-  });
 });
 
 // Запуск сервера
