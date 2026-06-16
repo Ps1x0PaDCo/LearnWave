@@ -224,9 +224,7 @@ const CoursesScreen = ({ route, navigation }) => {
                       <View style={styles.subjectTopLine}>
                         <Text
                           style={[styles.subjectName, { color: colors.textPrimary }]}
-                          numberOfLines={1}
-                          adjustsFontSizeToFit
-                          minimumFontScale={0.82}
+                          numberOfLines={2}
                         >
                           {sub.title}
                         </Text>
@@ -247,11 +245,11 @@ const CoursesScreen = ({ route, navigation }) => {
                         {sub.description || 'Доступно для обучения'}
                       </Text>
                       <View style={styles.courseFooter}>
-                        <Text style={[styles.courseCount, { color: colors.textMuted }]} numberOfLines={1}>
+                        <Text style={[styles.courseCount, { color: colors.textMuted }]}>
                           {courseState.meta}
                         </Text>
                         {isReady && (
-                          <Text style={[styles.courseCount, { color: colors.textMuted }]}>
+                          <Text style={[styles.courseCount, styles.courseProgressText, { color: colors.textMuted }]}>
                             {completedCount}/{topicCount} пройдено
                           </Text>
                         )}
@@ -295,13 +293,14 @@ const styles = StyleSheet.create({
   subjectCard: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 28, borderWidth: 1, marginBottom: 12, elevation: 4, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10 },
   iconBox: { width: 56, height: 56, borderRadius: 18, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
   subjectInfo: { flex: 1 },
-  subjectTopLine: { flexDirection: 'row', alignItems: 'center', marginBottom: 4, gap: 8 },
-  subjectName: { flex: 1, fontSize: 17, fontWeight: 'bold' },
+  subjectTopLine: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 4, gap: 8 },
+  subjectName: { flex: 1, fontSize: 17, lineHeight: 21, fontWeight: 'bold' },
   subjectMeta: { fontSize: 12, fontWeight: '500', opacity: 0.7, lineHeight: 16 },
   statusPill: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 },
   statusText: { fontSize: 10, fontWeight: '900' },
-  courseFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, gap: 8 },
-  courseCount: { flexShrink: 1, fontSize: 11, fontWeight: '800' },
+  courseFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: 10, gap: 8 },
+  courseCount: { flex: 1, flexShrink: 1, fontSize: 11, lineHeight: 15, fontWeight: '800' },
+  courseProgressText: { flex: 0, minWidth: 76, textAlign: 'right' },
   courseTrack: { height: 5, borderRadius: 3, overflow: 'hidden', marginTop: 7 },
   courseFill: { height: '100%', borderRadius: 3 },
   arrowBox: { width: 34, height: 34, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },

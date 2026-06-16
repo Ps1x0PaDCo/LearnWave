@@ -212,7 +212,6 @@ const ProfileScreen = ({ navigation }) => {
           [500, 1000, 2000, 3500, 5000, 7500, 10000, 15000].forEach(target => { if (xp >= target) awardsCount += 1; });
           if (user?.role === 'admin') awardsCount += 1;
           if (user) awardsCount += 1;
-          if (lecturesCount >= 3 && streakCount >= 4) awardsCount += 1;
           if (awardsCount >= 15) awardsCount += 1;
           
           setStats({ 

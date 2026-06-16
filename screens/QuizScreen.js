@@ -34,6 +34,7 @@ const QuizScreen = ({ route, navigation }) => {
   const [isCorrect, setIsCorrect] = useState(false);
   const [hintUsed, setHintUsed] = useState(false);
   const [needsReview, setNeedsReview] = useState(false);
+  const [completedBeforeAnswer, setCompletedBeforeAnswer] = useState(null);
   const scrollRef = useRef(null);
   const finalTopicKey = route.params?.topicKey || `topic_${topicId}`;
   const subjectKey = route.params?.subjectKey || '';
@@ -92,6 +93,7 @@ const QuizScreen = ({ route, navigation }) => {
         setIsAnswered(false);
         setIsCorrect(false);
         setNeedsReview(false);
+        setCompletedBeforeAnswer(null);
         setLoading(true);
 
         const row = await loadTopicRow();
@@ -132,7 +134,7 @@ const QuizScreen = ({ route, navigation }) => {
 
   // 💡 ФИЧА: Логика подсказки 50/50 (Убирает 2 неверных ответа за 50 монет)
   const useHint5050 = async () => {
-    if (hintUsed || isAnswered) return;
+    if (hintUsed || isAnswered || alreadyCompleted) return;
 
     // 1. Защита: не даем тратить монеты впустую, если вариантов и так мало
     if (!quizData || quizData.options.length <= 2) {
@@ -201,14 +203,16 @@ const QuizScreen = ({ route, navigation }) => {
     if (!selectedOption || isAnswered) return;
 
     const correct = selectedOption === quizData.correct;
+    const wasCompletedBeforeAnswer = alreadyCompleted;
     setIsCorrect(correct);
     setIsAnswered(true);
     setNeedsReview(!correct);
+    setCompletedBeforeAnswer(wasCompletedBeforeAnswer);
 
     if (correct) {
       haptic.notification('medium');
       const accountKey = user?.email || String(user?.id || '') || user?.username;
-      if (!alreadyCompleted) {
+      if (!wasCompletedBeforeAnswer) {
         completeTopic(accountKey, finalTopicKey, topicId);
       }
     } else {
@@ -231,7 +235,7 @@ const QuizScreen = ({ route, navigation }) => {
   const getFeedbackText = () => {
     if (!quizData) return '';
     if (isCorrect) {
-      if (alreadyCompleted) return 'Ответ верный. Эта тема уже была пройдена ранее, поэтому награда повторно не начисляется.';
+      if (completedBeforeAnswer === true) return 'Ответ верный. Эта тема уже была пройдена ранее, поэтому награда повторно не начисляется.';
       return quizData.successExplanation || 'Ответ верный: тема засчитана. Начислены опыт и монеты.';
     }
     const customExplanation = quizData.explanations?.[selectedOption] || quizData.explanation;
@@ -303,17 +307,18 @@ const QuizScreen = ({ route, navigation }) => {
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Проверка знаний</Text>
 
-        {/* Кнопка 50/50 */}
-        <TouchableOpacity
-          style={[styles.hintBtn, {
-            backgroundColor: hintUsed ? colors.border : colors.primary + '15',
-            opacity: hintUsed || isAnswered ? 0.6 : 1
-          }]}
-          onPress={useHint5050}
-          disabled={hintUsed || isAnswered}
-        >
-          <Text style={[styles.hintText, { color: hintUsed ? colors.textMuted : colors.primary }]}>50/50 🪙50</Text>
-        </TouchableOpacity>
+        {!alreadyCompleted && (
+          <TouchableOpacity
+            style={[styles.hintBtn, {
+              backgroundColor: hintUsed ? colors.border : colors.primary + '15',
+              opacity: hintUsed || isAnswered ? 0.6 : 1
+            }]}
+            onPress={useHint5050}
+            disabled={hintUsed || isAnswered}
+          >
+            <Text style={[styles.hintText, { color: hintUsed ? colors.textMuted : colors.primary }]}>50/50 🪙50</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
           {/* 🌟 ИСПРАВЛЕНО: Обернули в ScrollView, чтобы лекция и квиз плавно прокручивались */}
@@ -434,7 +439,7 @@ const QuizScreen = ({ route, navigation }) => {
         disabled={!selectedOption}
       >
         <Text style={styles.actionButtonText}>
-          {isAnswered ? (isCorrect ? (alreadyCompleted ? 'Пройдено' : 'Завершить (+50 XP/монет)') : 'Повторить материал') : 'Проверить ответ'}
+          {isAnswered ? (isCorrect ? (completedBeforeAnswer === true ? 'Пройдено' : 'Завершить (+50 XP/монет)') : 'Повторить материал') : 'Проверить ответ'}
         </Text>
       </TouchableOpacity>
       

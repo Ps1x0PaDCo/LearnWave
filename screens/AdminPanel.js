@@ -2237,8 +2237,8 @@ const styles = StyleSheet.create({
   // Модальные окна
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: 18 },
   modalBox: { padding: 24, borderRadius: 28, maxHeight: '88%' },
-  adminModalBox: { width: '100%', maxHeight: '92%', padding: 20, borderRadius: 26 },
-  adminModalBody: { flexGrow: 0, maxHeight: '78%' },
+  adminModalBox: { width: '100%', maxHeight: '88%', padding: 20, borderRadius: 26 },
+  adminModalBody: { flexGrow: 0, flexShrink: 1 },
   adminModalBodyContent: { paddingBottom: 4 },
   topicModalBox: { width: '100%', maxHeight: '92%', padding: 20, borderRadius: 26 },
   topicModalBody: { flexGrow: 0, maxHeight: '78%' },
