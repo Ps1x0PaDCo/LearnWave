@@ -424,6 +424,9 @@ export const AuthProvider = ({ children }) => {
         await AsyncStorage.setItem('user_theme', n ? 'dark' : 'light');
       },
       completeTopic,
+      getCompletedTopics: dbService.getCompletedTopics,
+      getAchievements: dbService.getAchievements,
+      toggleBookmark: dbService.toggleBookmark,
       getLeaderboard: dbService.getLeaderboard,
       executeRaw: (q, p) => Platform.OS !== 'web' ? db.getAllSync(q, p) : [],
     }}>

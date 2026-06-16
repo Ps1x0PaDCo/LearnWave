@@ -35,6 +35,7 @@ const QuizScreen = ({ route, navigation }) => {
   const [hintUsed, setHintUsed] = useState(false);
   const [needsReview, setNeedsReview] = useState(false);
   const [completedBeforeAnswer, setCompletedBeforeAnswer] = useState(null);
+  const [isBookmarked, setIsBookmarked] = useState(false);
   const scrollRef = useRef(null);
   const finalTopicKey = route.params?.topicKey || `topic_${topicId}`;
   const subjectKey = route.params?.subjectKey || '';
@@ -43,6 +44,8 @@ const QuizScreen = ({ route, navigation }) => {
   
   // 🌟 ДОБАВИЛИ: Стейт для хранения текста лекции
   const [lectureContent, setLectureContent] = useState('');
+
+  const bookmarkOwner = user?.email || String(user?.id || '') || user?.username || 'guest';
 
   useEffect(() => {
     const createDefaultQuiz = () => ({
@@ -72,6 +75,14 @@ const QuizScreen = ({ route, navigation }) => {
 
     const loadTopicRow = async () => {
       const subjectKey = route.params?.subjectKey || '';
+      if (Platform.OS !== 'web') {
+        const localRow = db.getFirstSync(
+          'SELECT quiz_question, quiz_answer, content, title, description, subject_key FROM topics WHERE id = ? OR server_id = ?',
+          [topicId, topicId]
+        );
+        if (localRow) return localRow;
+      }
+
       const res = await apiClient.get(`/topics?subject_key=${subjectKey}`).catch(() => null);
       const topics = Array.isArray(res?.data?.topics) ? res.data.topics : [];
       const byId = topics.find(item => String(item.id) === String(topicId) || String(item.server_id) === String(topicId));
@@ -124,6 +135,35 @@ const QuizScreen = ({ route, navigation }) => {
     };
     loadQuiz();
   }, [topicId, topicTitle]);
+
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    try {
+      const row = db.getFirstSync(
+        'SELECT id FROM bookmarks WHERE username = ? AND topic_id = ?',
+        [bookmarkOwner, Number(topicId)]
+      );
+      setIsBookmarked(!!row);
+    } catch {
+      setIsBookmarked(false);
+    }
+  }, [bookmarkOwner, topicId]);
+
+  const toggleBookmark = () => {
+    if (Platform.OS === 'web') return;
+    try {
+      if (isBookmarked) {
+        db.runSync('DELETE FROM bookmarks WHERE username = ? AND topic_id = ?', [bookmarkOwner, Number(topicId)]);
+        setIsBookmarked(false);
+      } else {
+        db.runSync('INSERT OR IGNORE INTO bookmarks (username, topic_id, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)', [bookmarkOwner, Number(topicId)]);
+        setIsBookmarked(true);
+      }
+      haptic.impact('medium');
+    } catch {
+      Alert.alert('Ошибка', 'Не удалось обновить закладку.');
+    }
+  };
 
 
   const handleOptionPress = (option) => {
@@ -253,7 +293,9 @@ const QuizScreen = ({ route, navigation }) => {
   const renderLectureContent = () => {
     const normalizedLecture = lectureContent
       .replace(/\\n/g, '\n')
-      .replace(/^(#{1,6})(\S)/gm, '$1 $2');
+      .replace(/^\s*(#{1,6})(\S)/gm, '$1 $2')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
     const parts = normalizedLecture.split(/(\[FORMULA\][\s\S]*?\[\/FORMULA\])/g);
 
     return parts
@@ -275,7 +317,11 @@ const QuizScreen = ({ route, navigation }) => {
             key={`markdown-${index}`}
             style={{
               body: { color: colors.textPrimary, fontSize: 15, lineHeight: 23 },
-              heading3: { color: colors.primary, fontWeight: 'bold', marginTop: 12, marginBottom: 6, fontSize: 17 },
+              paragraph: { marginTop: 0, marginBottom: 10 },
+              heading1: { color: colors.primary, fontWeight: '900', marginTop: 12, marginBottom: 8, fontSize: 22, lineHeight: 28 },
+              heading2: { color: colors.primary, fontWeight: '900', marginTop: 12, marginBottom: 8, fontSize: 19, lineHeight: 25 },
+              heading3: { color: colors.primary, fontWeight: '900', marginTop: 12, marginBottom: 8, fontSize: 17, lineHeight: 23 },
+              heading4: { color: colors.primary, fontWeight: '900', marginTop: 10, marginBottom: 6, fontSize: 16, lineHeight: 22 },
               strong: { fontWeight: 'bold', color: colors.textPrimary },
               bullet_list: { marginTop: 4, marginBottom: 8 },
               code_inline: {
@@ -306,6 +352,17 @@ const QuizScreen = ({ route, navigation }) => {
           <Ionicons name="close" size={24} color={colors.textPrimary} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Проверка знаний</Text>
+
+        <TouchableOpacity
+          style={[styles.bookmarkBtn, {
+            backgroundColor: isBookmarked ? colors.primary + '18' : colors.surface,
+            borderColor: isBookmarked ? colors.primary + '45' : colors.border,
+          }]}
+          onPress={toggleBookmark}
+          activeOpacity={0.8}
+        >
+          <Ionicons name={isBookmarked ? 'bookmark' : 'bookmark-outline'} size={18} color={isBookmarked ? colors.primary : colors.textMuted} />
+        </TouchableOpacity>
 
         {!alreadyCompleted && (
           <TouchableOpacity
@@ -456,6 +513,7 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 18, fontWeight: 'bold' },
   backBtn: { width: 45, height: 45, borderRadius: 15, justifyContent: 'center', alignItems: 'center', borderWidth: 1 },
   hintBtn: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12 },
+  bookmarkBtn: { width: 38, height: 38, borderRadius: 12, borderWidth: 1, justifyContent: 'center', alignItems: 'center', marginLeft: 'auto', marginRight: 8 },
   hintText: { fontSize: 13, fontWeight: '700' },
   content: { paddingHorizontal: 20, paddingBottom: 24, paddingTop: 8 },
   topicHero: { flexDirection: 'row', alignItems: 'center', padding: 18, borderRadius: 24, marginBottom: 16 },

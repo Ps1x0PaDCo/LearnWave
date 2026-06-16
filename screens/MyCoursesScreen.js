@@ -1,7 +1,7 @@
 import React, { useContext, useState, useEffect, useMemo } from 'react';
 import { 
   View, Text, TouchableOpacity, StyleSheet, FlatList, 
-  TextInput, Share, Alert, ScrollView, StatusBar 
+  TextInput, Share, Alert, ScrollView, StatusBar, Platform
 } from 'react-native';
 import { AuthContext, CoursesContext } from '../context/AuthContext';
 import { getThemeColors } from '../styles/colors';
@@ -38,11 +38,11 @@ const MyCoursesScreen = ({ navigation }) => {
       setCompletedCourses(completed);
 
       try {
-        const bookmarks = db.getAllSync('SELECT topic_title FROM bookmarks WHERE username = ?', [nickname]);
-        setBookmarkedTopics(bookmarks.map(b => b.topic_title));
+        const bookmarks = db.getAllSync('SELECT topic_id FROM bookmarks WHERE username = ?', [user?.email || String(user?.id || '') || nickname]);
+        setBookmarkedTopics(bookmarks.map(b => Number(b.topic_id)));
 
         const topicsData = db.getAllSync(`
-          SELECT t.title as topic, c.title as courseTitle 
+          SELECT t.id, t.subject_key, t.title as topic, c.title as courseTitle
           FROM topics t
           JOIN courses c ON t.subject_key = c.subject_key
         `);
@@ -59,8 +59,8 @@ const MyCoursesScreen = ({ navigation }) => {
       const matchesSearch = item.topic.toLowerCase().includes(searchQuery.toLowerCase()) || 
                             item.courseTitle.toLowerCase().includes(searchQuery.toLowerCase());
       
-      const isFinished = (completedCourses || []).includes(item.topic);
-      const isSaved = (bookmarkedTopics || []).includes(item.topic);
+      const isFinished = (completedCourses || []).includes(`${item.subject_key}_${item.id}`) || (completedCourses || []).includes(`topic_${item.id}`);
+      const isSaved = (bookmarkedTopics || []).includes(Number(item.id));
 
       if (activeFilter === 'completed') return matchesSearch && isFinished;
       if (activeFilter === 'not_completed') return matchesSearch && !isFinished;
@@ -90,16 +90,19 @@ const MyCoursesScreen = ({ navigation }) => {
         text: 'Удалить', 
         style: 'destructive', 
         onPress: () => {
-          toggleBookmark(nickname, topicTitle, true);
-          setBookmarkedTopics(prev => prev.filter(t => t !== topicTitle));
+          const topic = allTopics.find(item => item.topic === topicTitle);
+          if (topic) {
+            toggleBookmark(user?.email || String(user?.id || '') || nickname, topic.id, true);
+            setBookmarkedTopics(prev => prev.filter(t => Number(t) !== Number(topic.id)));
+          }
         } 
       }
     ]);
   };
 
   const renderTopicCard = ({ item }) => {
-    const isFinished = (completedCourses || []).includes(item.topic);
-    const isSaved = (bookmarkedTopics || []).includes(item.topic);
+    const isFinished = (completedCourses || []).includes(`${item.subject_key}_${item.id}`) || (completedCourses || []).includes(`topic_${item.id}`);
+    const isSaved = (bookmarkedTopics || []).includes(Number(item.id));
 
     return (
       <TouchableOpacity 

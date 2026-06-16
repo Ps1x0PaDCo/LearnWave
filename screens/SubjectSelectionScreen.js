@@ -1,7 +1,7 @@
 import React, { useContext, useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView, Platform,
-  Animated, StatusBar, ActivityIndicator
+  Animated, StatusBar, ActivityIndicator, Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AuthContext } from '../context/AuthContext';
@@ -63,6 +63,7 @@ const SubjectSelectionScreen = ({ route, navigation }) => {
   
   const [topicCount, setTopicCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [isDownloading, setIsDownloading] = useState(false);
   const scaleAnim = useRef(new Animated.Value(0.9)).current;
 
   // 💡 ИСПРАВЛЕНО: Безопасный маппинг иконок под все типы предметов, включая базовую математику
@@ -138,6 +139,49 @@ const SubjectSelectionScreen = ({ route, navigation }) => {
     });
   };
 
+  const handleDownloadCourse = async () => {
+    if (Platform.OS === 'web') {
+      Alert.alert('Офлайн-доступ', 'Офлайн-сохранение доступно в мобильной версии приложения.');
+      return;
+    }
+    setIsDownloading(true);
+    try {
+      const res = await apiClient.get(`/topics?subject_key=${subjectKey}`);
+      const topics = Array.isArray(res?.data?.topics) ? res.data.topics : [];
+      if (topics.length === 0) {
+        Alert.alert('Тем пока нет', 'В этом курсе ещё нет материалов для офлайн-сохранения.');
+        return;
+      }
+
+      db.runSync('INSERT OR IGNORE INTO courses (title, subject_key) VALUES (?, ?)', [current.title, subjectKey]);
+      topics.forEach(topic => {
+        db.runSync(
+          `INSERT OR REPLACE INTO topics
+            (id, server_id, subject_key, title, description, content, quiz_question, quiz_answer, difficulty, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+          [
+            topic.id,
+            topic.server_id || topic.id,
+            topic.subject_key || subjectKey,
+            topic.title || 'Тема',
+            topic.description || '',
+            topic.content || '',
+            topic.quiz_question || '',
+            topic.quiz_answer || '',
+            topic.difficulty || 1,
+          ]
+        );
+      });
+      setTopicCount(topics.length);
+      haptic.notification('medium');
+      Alert.alert('Курс сохранён', `На устройство загружено тем: ${topics.length}. Теперь их можно открыть без интернета.`);
+    } catch (e) {
+      Alert.alert('Не удалось скачать', 'Проверьте подключение к серверу и попробуйте ещё раз.');
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>
       <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
@@ -198,6 +242,27 @@ const SubjectSelectionScreen = ({ route, navigation }) => {
             <Ionicons name="arrow-forward" size={18} color={current.color} />
           </View>
         </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.offlineButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+          activeOpacity={0.85}
+          onPress={handleDownloadCourse}
+          disabled={isDownloading}
+        >
+          {isDownloading ? (
+            <ActivityIndicator size="small" color={current.color} />
+          ) : (
+            <Ionicons name="download-outline" size={20} color={current.color} />
+          )}
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.offlineButtonTitle, { color: colors.textPrimary }]}>
+              {topicCount > 0 ? 'Обновить офлайн-копию' : 'Скачать для офлайн-доступа'}
+            </Text>
+            <Text style={[styles.offlineButtonSub, { color: colors.textMuted }]}>
+              Темы сохранятся на устройстве и откроются без сети
+            </Text>
+          </View>
+        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );
@@ -216,6 +281,9 @@ const styles = StyleSheet.create({
   courseFacts: { flexDirection: 'row', gap: 10, flexWrap: 'wrap', justifyContent: 'center' },
   infoBadgeText: { fontSize: 13, fontWeight: 'bold', marginLeft: 8 },
   primaryButton: { height: 65, borderRadius: 22, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 25, elevation: 4 },
+  offlineButton: { minHeight: 64, borderRadius: 20, borderWidth: 1, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, gap: 12, marginTop: 12 },
+  offlineButtonTitle: { fontSize: 15, fontWeight: '900' },
+  offlineButtonSub: { fontSize: 11, lineHeight: 15, fontWeight: '600', marginTop: 2 },
   btnIconCircle: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#FFF', justifyContent: 'center', alignItems: 'center' },
   buttonText: { color: '#FFF', fontSize: 17, fontWeight: 'bold' }
 });

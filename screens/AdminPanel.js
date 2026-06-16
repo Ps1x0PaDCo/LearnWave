@@ -36,6 +36,7 @@ const COURSE_KEY_OPTIONS = [
   { label: 'Информатика', value: 'computer_science', icon: 'desktop' },
   { label: 'Python', value: 'python_dev', icon: 'code-working' },
   { label: 'Web-разработка', value: 'web_dev', icon: 'globe' },
+  { label: 'Прочий курс', value: 'misc', icon: 'albums' },
 ];
 
 const CATEGORY_OPTIONS = [
@@ -58,6 +59,7 @@ const CATEGORY_BY_KEY = {
   history: 4,
   geography: 4,
   english: 5,
+  misc: 6,
 };
 
 const FORMAT_GUIDES = {
@@ -1145,10 +1147,12 @@ const AdminPanel = ({ navigation }) => {
                               <Text style={[styles.dropdownOptionKey, { color: colors.textMuted }]}>{option.value}</Text>
                             </View>
                             {isUsed ? (
-                              <Text style={[styles.dropdownUsedText, { color: colors.textMuted }]}>уже есть</Text>
+                              <Text style={[styles.dropdownUsedText, { color: colors.textMuted }]}>занят</Text>
                             ) : isSelected ? (
                               <Ionicons name="checkmark-circle" size={20} color={colors.primary} />
-                            ) : null}
+                            ) : (
+                              <Text style={[styles.dropdownUsedText, { color: '#2ECC71' }]}>свободен</Text>
+                            )}
                           </TouchableOpacity>
                         );
                       })}
