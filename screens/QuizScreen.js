@@ -297,6 +297,45 @@ const QuizScreen = ({ route, navigation }) => {
       .replace(/\n{3,}/g, '\n\n')
       .trim();
     const parts = normalizedLecture.split(/(\[FORMULA\][\s\S]*?\[\/FORMULA\])/g);
+    const renderTextBlock = (text, blockIndex) => {
+      const lines = text.split('\n');
+      const nodes = [];
+      let paragraph = [];
+
+      const flushParagraph = (key) => {
+        const value = paragraph.join('\n').trim();
+        paragraph = [];
+        if (!value) return;
+        nodes.push(
+          <Text key={`p-${blockIndex}-${key}`} style={[styles.lectureParagraph, { color: colors.textPrimary }]}>
+            {value}
+          </Text>
+        );
+      };
+
+      lines.forEach((line, lineIndex) => {
+        const headingMatch = line.match(/^\s*#{1,6}\s*(.+)$/);
+        if (headingMatch) {
+          flushParagraph(lineIndex);
+          nodes.push(
+            <Text key={`h-${blockIndex}-${lineIndex}`} style={[styles.lectureHeading, { color: colors.primary }]}>
+              {headingMatch[1].trim()}
+            </Text>
+          );
+          return;
+        }
+
+        if (!line.trim()) {
+          flushParagraph(lineIndex);
+          return;
+        }
+
+        paragraph.push(line.trim());
+      });
+
+      flushParagraph('last');
+      return <View key={`text-${blockIndex}`}>{nodes}</View>;
+    };
 
     return parts
       .filter(part => part && part.trim().length > 0)
@@ -312,30 +351,7 @@ const QuizScreen = ({ route, navigation }) => {
           );
         }
 
-        return (
-          <Markdown
-            key={`markdown-${index}`}
-            style={{
-              body: { color: colors.textPrimary, fontSize: 15, lineHeight: 23 },
-              paragraph: { marginTop: 0, marginBottom: 10 },
-              heading1: { color: colors.primary, fontWeight: '900', marginTop: 12, marginBottom: 8, fontSize: 22, lineHeight: 28 },
-              heading2: { color: colors.primary, fontWeight: '900', marginTop: 12, marginBottom: 8, fontSize: 19, lineHeight: 25 },
-              heading3: { color: colors.primary, fontWeight: '900', marginTop: 12, marginBottom: 8, fontSize: 17, lineHeight: 23 },
-              heading4: { color: colors.primary, fontWeight: '900', marginTop: 10, marginBottom: 6, fontSize: 16, lineHeight: 22 },
-              strong: { fontWeight: 'bold', color: colors.textPrimary },
-              bullet_list: { marginTop: 4, marginBottom: 8 },
-              code_inline: {
-                fontFamily: 'monospace',
-                backgroundColor: isDarkMode ? '#1A202C' : '#EDF2F7',
-                color: '#E74C3C',
-                paddingHorizontal: 4,
-                borderRadius: 4
-              }
-            }}
-          >
-            {part}
-          </Markdown>
-        );
+        return renderTextBlock(part, index);
       });
   };
 
@@ -351,31 +367,33 @@ const QuizScreen = ({ route, navigation }) => {
         >
           <Ionicons name="close" size={24} color={colors.textPrimary} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Проверка знаний</Text>
+        <Text style={[styles.headerTitle, { color: colors.textPrimary }]} numberOfLines={1}>Проверка знаний</Text>
 
-        <TouchableOpacity
-          style={[styles.bookmarkBtn, {
-            backgroundColor: isBookmarked ? colors.primary + '18' : colors.surface,
-            borderColor: isBookmarked ? colors.primary + '45' : colors.border,
-          }]}
-          onPress={toggleBookmark}
-          activeOpacity={0.8}
-        >
-          <Ionicons name={isBookmarked ? 'bookmark' : 'bookmark-outline'} size={18} color={isBookmarked ? colors.primary : colors.textMuted} />
-        </TouchableOpacity>
-
-        {!alreadyCompleted && (
+        <View style={styles.headerActions}>
           <TouchableOpacity
-            style={[styles.hintBtn, {
-              backgroundColor: hintUsed ? colors.border : colors.primary + '15',
-              opacity: hintUsed || isAnswered ? 0.6 : 1
+            style={[styles.bookmarkBtn, {
+              backgroundColor: isBookmarked ? colors.primary + '18' : colors.surface,
+              borderColor: isBookmarked ? colors.primary + '45' : colors.border,
             }]}
-            onPress={useHint5050}
-            disabled={hintUsed || isAnswered}
+            onPress={toggleBookmark}
+            activeOpacity={0.8}
           >
-            <Text style={[styles.hintText, { color: hintUsed ? colors.textMuted : colors.primary }]}>50/50 🪙50</Text>
+            <Ionicons name={isBookmarked ? 'bookmark' : 'bookmark-outline'} size={18} color={isBookmarked ? colors.primary : colors.textMuted} />
           </TouchableOpacity>
-        )}
+
+          {!alreadyCompleted && (
+            <TouchableOpacity
+              style={[styles.hintBtn, {
+                backgroundColor: hintUsed ? colors.border : colors.primary + '15',
+                opacity: hintUsed || isAnswered ? 0.6 : 1
+              }]}
+              onPress={useHint5050}
+              disabled={hintUsed || isAnswered}
+            >
+              <Text style={[styles.hintText, { color: hintUsed ? colors.textMuted : colors.primary }]}>50/50 🪙50</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
           {/* 🌟 ИСПРАВЛЕНО: Обернули в ScrollView, чтобы лекция и квиз плавно прокручивались */}
@@ -509,11 +527,12 @@ const QuizScreen = ({ route, navigation }) => {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 15 },
-  headerTitle: { fontSize: 18, fontWeight: 'bold' },
+  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 15, gap: 10 },
+  headerTitle: { flex: 1, fontSize: 18, fontWeight: 'bold' },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   backBtn: { width: 45, height: 45, borderRadius: 15, justifyContent: 'center', alignItems: 'center', borderWidth: 1 },
-  hintBtn: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12 },
-  bookmarkBtn: { width: 38, height: 38, borderRadius: 12, borderWidth: 1, justifyContent: 'center', alignItems: 'center', marginLeft: 'auto', marginRight: 8 },
+  hintBtn: { paddingHorizontal: 10, paddingVertical: 8, borderRadius: 12 },
+  bookmarkBtn: { width: 38, height: 38, borderRadius: 12, borderWidth: 1, justifyContent: 'center', alignItems: 'center' },
   hintText: { fontSize: 13, fontWeight: '700' },
   content: { paddingHorizontal: 20, paddingBottom: 24, paddingTop: 8 },
   topicHero: { flexDirection: 'row', alignItems: 'center', padding: 18, borderRadius: 24, marginBottom: 16 },
@@ -522,6 +541,8 @@ const styles = StyleSheet.create({
   topicHeroLabel: { color: 'rgba(255,255,255,0.78)', fontSize: 11, fontWeight: '900', letterSpacing: 1.2, marginBottom: 4 },
   topicHeroTitle: { color: '#FFF', fontSize: 20, fontWeight: '900', lineHeight: 25 },
   lessonCard: { padding: 20, borderRadius: 24, borderWidth: 1, marginBottom: 18 },
+  lectureHeading: { fontSize: 18, lineHeight: 24, fontWeight: '900', marginTop: 12, marginBottom: 8 },
+  lectureParagraph: { fontSize: 15, lineHeight: 23, fontWeight: '500', marginBottom: 12 },
   reviewBanner: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 16, padding: 12, marginBottom: 14, gap: 8 },
   reviewBannerText: { flex: 1, color: '#B26B00', fontSize: 13, fontWeight: '700', lineHeight: 18 },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },

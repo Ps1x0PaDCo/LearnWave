@@ -8,6 +8,7 @@ import { AuthContext } from '../context/AuthContext';
 import { getThemeColors } from '../styles/colors';
 import apiClient from '../services/api';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { db } from '../services/db';
 
 // ─── Haptics: безопасная обёртка (не падает на вебе) ─────────────────────────
 const haptic = {
@@ -93,6 +94,40 @@ const CoursesScreen = ({ route, navigation }) => {
         }
       } catch (err) {
         console.log("? [Courses] Ошибка получения каталога:", err.message);
+        if (Platform.OS !== 'web') {
+          try {
+            const localRows = db.getAllSync(`
+              SELECT
+                c.title,
+                c.subject_key,
+                COUNT(t.id) as topic_count
+              FROM courses c
+              LEFT JOIN topics t ON t.subject_key = c.subject_key
+              GROUP BY c.subject_key, c.title
+              HAVING COUNT(t.id) > 0
+              ORDER BY c.title ASC
+            `) || [];
+
+            if (localRows.length > 0) {
+              setCatalog([{
+                id: 'offline',
+                title: 'Загружено на устройство',
+                color: colors.primary,
+                subjects: localRows.map((row, index) => ({
+                  id: `offline-${row.subject_key || index}`,
+                  title: row.title || 'Офлайн-курс',
+                  description: 'Материалы доступны без подключения к серверу.',
+                  subject_key: row.subject_key,
+                  topic_count: Number(row.topic_count || 0),
+                  color: colors.primary,
+                  icon_name: 'book',
+                })),
+              }]);
+            }
+          } catch (localErr) {
+            console.log('? [Courses] Offline fallback error:', localErr.message);
+          }
+        }
       } finally {
         setLoading(false);
       }
@@ -290,17 +325,17 @@ const styles = StyleSheet.create({
   sectionHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 15, marginLeft: 5 },
   dot: { width: 8, height: 8, borderRadius: 4, marginRight: 10 },
   sectionLabel: { fontSize: 11, fontWeight: '900', letterSpacing: 2 },
-  subjectCard: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 28, borderWidth: 1, marginBottom: 12, elevation: 4, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10 },
+  subjectCard: { flexDirection: 'row', alignItems: 'flex-start', padding: 16, borderRadius: 28, borderWidth: 1, marginBottom: 12, elevation: 4, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10 },
   iconBox: { width: 56, height: 56, borderRadius: 18, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
   subjectInfo: { flex: 1 },
-  subjectTopLine: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 4, gap: 8 },
-  subjectName: { flex: 1, fontSize: 17, lineHeight: 21, fontWeight: 'bold' },
+  subjectTopLine: { flexDirection: 'column', alignItems: 'flex-start', marginBottom: 6, gap: 6 },
+  subjectName: { width: '100%', fontSize: 17, lineHeight: 22, fontWeight: 'bold' },
   subjectMeta: { fontSize: 12, fontWeight: '500', opacity: 0.7, lineHeight: 16 },
   statusPill: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 },
   statusText: { fontSize: 10, fontWeight: '900' },
-  courseFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: 10, gap: 8 },
-  courseCount: { flex: 1, flexShrink: 1, fontSize: 11, lineHeight: 15, fontWeight: '800' },
-  courseProgressText: { flex: 0, minWidth: 76, textAlign: 'right' },
+  courseFooter: { flexDirection: 'column', alignItems: 'flex-start', marginTop: 10, gap: 3 },
+  courseCount: { width: '100%', fontSize: 11, lineHeight: 15, fontWeight: '800' },
+  courseProgressText: { textAlign: 'left' },
   courseTrack: { height: 5, borderRadius: 3, overflow: 'hidden', marginTop: 7 },
   courseFill: { height: '100%', borderRadius: 3 },
   arrowBox: { width: 34, height: 34, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
