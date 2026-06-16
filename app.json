@@ -1,59 +1,60 @@
-{
-  "expo": {
-    "name": "LearnWave",
-    "slug": "LearnWave",
-    "version": "1.0.0",
-    "orientation": "portrait",
-    "icon": "./assets/icon.png",
-    "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#4A90E2"
-    },
-    "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "com.learnwave.app"
-    },
-    "android": {
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#4A90E2"
-      },
-      "edgeToEdgeEnabled": true,
-      "package": "com.learnwave.app",
-      "versionCode": 1,
-      "permissions": [
-        "android.permission.INTERNET",
-        "android.permission.VIBRATE",
-        "android.permission.RECEIVE_BOOT_COMPLETED"
-      ]
-    },
-    "web": {
-      "favicon": "./assets/favicon.png"
-    },
-    "plugins": [
-      "expo-sqlite",
-      "expo-secure-store",
-      [
-        "expo-notifications",
-        {
-          "icon": "./assets/icon.png",
-          "color": "#4A90E2"
-        }
-      ],
-      [
-        "expo-document-picker",
-        {
-          "iCloudContainerEnvironment": "Production"
-        }
-      ]
-    ],
-    "extra": {
-      "eas": {
-        "projectId": "6f445e81-1d07-433c-905f-6c7321039296"
-      }
-    }
-  }
+﻿{
+    "expo":  {
+                 "name":  "LearnWave",
+                 "slug":  "LearnWave",
+                 "version":  "1.0.0",
+                 "orientation":  "portrait",
+                 "icon":  "./assets/icon.png",
+                 "userInterfaceStyle":  "automatic",
+                 "newArchEnabled":  true,
+                 "splash":  {
+                                "image":  "./assets/splash-icon.png",
+                                "resizeMode":  "contain",
+                                "backgroundColor":  "#4A90E2"
+                            },
+                 "ios":  {
+                             "supportsTablet":  true,
+                             "bundleIdentifier":  "com.learnwave.app"
+                         },
+                 "android":  {
+                                 "adaptiveIcon":  {
+                                                      "foregroundImage":  "./assets/adaptive-icon.png",
+                                                      "backgroundColor":  "#4A90E2"
+                                                  },
+                                 "edgeToEdgeEnabled":  true,
+                                 "package":  "com.learnwave.app",
+                                 "versionCode":  1,
+                                 "permissions":  [
+                                                     "android.permission.INTERNET",
+                                                     "android.permission.VIBRATE",
+                                                     "android.permission.RECEIVE_BOOT_COMPLETED"
+                                                 ],
+                                 "usesCleartextTraffic":  true
+                             },
+                 "web":  {
+                             "favicon":  "./assets/favicon.png"
+                         },
+                 "plugins":  [
+                                 "expo-sqlite",
+                                 "expo-secure-store",
+                                 [
+                                     "expo-notifications",
+                                     {
+                                         "icon":  "./assets/icon.png",
+                                         "color":  "#4A90E2"
+                                     }
+                                 ],
+                                 [
+                                     "expo-document-picker",
+                                     {
+                                         "iCloudContainerEnvironment":  "Production"
+                                     }
+                                 ]
+                             ],
+                 "extra":  {
+                               "eas":  {
+                                           "projectId":  "6f445e81-1d07-433c-905f-6c7321039296"
+                                       }
+                           }
+             }
 }
