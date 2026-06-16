@@ -117,13 +117,24 @@ const LabScreen = ({ navigation }) => {
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={28} color={colors.textPrimary} />
         </TouchableOpacity>
-        <Text style={[styles.title, { color: colors.textPrimary }]}>Лаборатория Pro</Text>
+        <Text style={[styles.title, { color: colors.textPrimary }]}>Лаборатория</Text>
         <TouchableOpacity onPress={ghost ? clearGhost : saveToGhost}>
           <Ionicons name={ghost ? "layers-off" : "copy-outline"} size={24} color={colors.primary} />
         </TouchableOpacity>
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        <View style={[styles.introCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={[styles.introIcon, { backgroundColor: colors.primary + '18' }]}>
+            <Ionicons name="flask-outline" size={22} color={colors.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.introTitle, { color: colors.textPrimary }]}>Экспериментальный офлайн-модуль</Text>
+            <Text style={[styles.introText, { color: colors.textMuted }]}>
+              Графики строятся прямо на устройстве. Раздел показывает основу будущих интерактивных заданий.
+            </Text>
+          </View>
+        </View>
         
         {/* СЕЛЕКТОР ТИПА */}
         <View style={[styles.tabBar, { backgroundColor: colors.surface }]}>
@@ -205,7 +216,7 @@ const LabScreen = ({ navigation }) => {
            </Text>
            {type === 'parabola' && (
              <Text style={[styles.analysisData, { color: colors.textMuted }]}>
-               D = {analysis.D.toFixed(2)} | Вершина: ({analysis.vertexX.toFixed(1)}; {analysis.vertexY.toFixed(1)})
+               D = {analysis.D.toFixed(2)} | вершина: ({analysis.vertexX.toFixed(1)}; {analysis.vertexY.toFixed(1)})
              </Text>
            )}
         </View>
@@ -214,14 +225,14 @@ const LabScreen = ({ navigation }) => {
           {type === 'physics' ? (
             <>
               <ControlRow 
-                label="Нач. скорость (м/с)" 
+                label="Начальная скорость"
                 val={a} 
                 onAdj={(v) => adjust('a', v)} 
                 colors={colors} 
                 step={1} 
               />
               <ControlRow 
-                label="Угол броска (град)" 
+                label="Угол броска"
                 val={Math.round(b * 180 / Math.PI)} 
                 onAdj={(v) => adjust('b', (v * Math.PI / 180))} 
                 colors={colors} 
@@ -231,14 +242,14 @@ const LabScreen = ({ navigation }) => {
           ) : (
             <>
               <ControlRow 
-                label={type === 'line' ? "Угловой коэф. (a)" : "Коэф. деформации (a)"} 
+                label={type === 'line' ? 'Коэффициент a' : 'Коэффициент a'}
                 val={a} 
                 onAdj={(v) => adjust('a', v)} 
                 colors={colors} 
                 step={0.1} 
               />
               <ControlRow 
-                label={type === 'line' ? "Свободный член (b)" : "Линейный коэф. (b)"} 
+                label={type === 'line' ? 'Свободный член b' : 'Коэффициент b'}
                 val={b} 
                 onAdj={(v) => adjust('b', v)} 
                 colors={colors} 
@@ -246,7 +257,7 @@ const LabScreen = ({ navigation }) => {
               />
               {type === 'parabola' && (
                 <ControlRow 
-                  label="Свободный член (c)" 
+                  label="Свободный член c"
                   val={c} 
                   onAdj={(v) => adjust('c', v)} 
                   colors={colors} 
@@ -261,7 +272,7 @@ const LabScreen = ({ navigation }) => {
         <View style={styles.hintBox}>
           <Ionicons name="bulb-outline" size={16} color={colors.textMuted} />
           <Text style={[styles.hintText, { color: colors.textMuted }]}>
-            Используйте иконку в шапке для сравнения двух графиков
+            Иконка в шапке сохраняет текущий график для сравнения с новым.
           </Text>
         </View>
       </ScrollView>
