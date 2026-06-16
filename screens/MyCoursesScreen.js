@@ -1,15 +1,18 @@
 import React, { useContext, useState, useEffect, useMemo } from 'react';
 import { 
   View, Text, TouchableOpacity, StyleSheet, FlatList, 
-  TextInput, Share, Alert, ScrollView, Dimensions, StatusBar 
+  TextInput, Share, Alert, ScrollView, StatusBar 
 } from 'react-native';
 import { AuthContext, CoursesContext } from '../context/AuthContext';
 import { getThemeColors } from '../styles/colors';
 import { db } from '../services/db'; 
 import Ionicons from '@expo/vector-icons/Ionicons';
-import * as Haptics from 'expo-haptics';
 
-const { width } = Dimensions.get('window');
+// ─── Haptics: безопасная обёртка (не падает на вебе) ─────────────────────────
+const haptic = {
+  impact: (style) => { if (Platform.OS !== 'web') { const H = require('expo-haptics'); H.impactAsync(style); } },
+  notification: (type) => { if (Platform.OS !== 'web') { const H = require('expo-haptics'); H.notificationAsync(type); } },
+};
 
 const MyCoursesScreen = ({ navigation }) => {
   const { completedCourses, setCompletedCourses } = useContext(CoursesContext);
@@ -80,7 +83,7 @@ const MyCoursesScreen = ({ navigation }) => {
   };
 
   const onRemoveBookmark = (topicTitle) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    haptic.impact('medium');
     Alert.alert('Удалить?', 'Убрать тему из сохраненных?', [
       { text: 'Отмена', style: 'cancel' },
       { 
@@ -176,7 +179,7 @@ const MyCoursesScreen = ({ navigation }) => {
               ].map(f => (
                 <TouchableOpacity 
                   key={f.id}
-                  onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setActiveFilter(f.id); }}
+                  onPress={() => { haptic.impact('medium'); setActiveFilter(f.id); }}
                   style={[styles.filterPill, { 
                     backgroundColor: activeFilter === f.id ? colors.primary : colors.surface,
                     borderColor: activeFilter === f.id ? colors.primary : colors.border

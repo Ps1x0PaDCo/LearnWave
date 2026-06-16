@@ -1,69 +1,114 @@
 import axios from 'axios';
-import * as SecureStore from 'expo-secure-store';
+import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { DeviceEventEmitter } from 'react-native';
+
+// ‚îÄ‚îÄ‚îÄ –•—Ä–∞–Ω–∏–ª–∏—â–µ —Ç–æ–∫–µ–Ω–∞: SecureStore –Ω–∞ –Ω–∞—Ç–∏–≤–µ, AsyncStorage –Ω–∞ –≤–µ–±–µ ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ
+const tokenStorage = {
+  get: async (key) => {
+    if (Platform.OS === 'web') return AsyncStorage.getItem(key);
+    const SecureStore = require('expo-secure-store');
+    return SecureStore.getItemAsync(key);
+  },
+  set: async (key, value) => {
+    if (Platform.OS === 'web') return AsyncStorage.setItem(key, value);
+    const SecureStore = require('expo-secure-store');
+    return SecureStore.setItemAsync(key, value);
+  },
+  delete: async (key) => {
+    if (Platform.OS === 'web') return AsyncStorage.removeItem(key);
+    const SecureStore = require('expo-secure-store');
+    return SecureStore.deleteItemAsync(key);
+  },
+};
+
+// ‚îÄ‚îÄ‚îÄ –°–æ–±—ã—Ç–∏–µ –ø—Ä–∏–Ω—É–¥–∏—Ç–µ–ª—å–Ω–æ–≥–æ –ª–æ–≥–∞—É—Ç–∞: DeviceEventEmitter –Ω–∞ –Ω–∞—Ç–∏–≤–µ ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ
+const emitForceLogout = () => {
+  if (Platform.OS !== 'web') {
+    const { DeviceEventEmitter } = require('react-native');
+    DeviceEventEmitter.emit('FORCE_LOGOUT');
+  } else {
+    // –ù–∞ –≤–µ–±–µ –∏—Å–ø–æ–ª—å–∑—É–µ–º –∫–∞—Å—Ç–æ–º–Ω–æ–µ —Å–æ–±—ã—Ç–∏–µ –±—Ä–∞—É–∑–µ—Ä–∞
+    window.dispatchEvent(new Event('FORCE_LOGOUT'));
+  }
+};
+
+// ‚îÄ‚îÄ‚îÄ –ë–∞–∑–æ–≤—ã–π URL –∏–∑ –ø–µ—Ä–µ–º–µ–Ω–Ω–æ–π –æ–∫—Ä—É–∂–µ–Ω–∏—è ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ
+// –í —Ñ–∞–π–ª–µ .env (–∫–æ—Ä–µ–Ω—å –ø—Ä–æ–µ–∫—Ç–∞) –ø—Ä–æ–ø–∏—à–∏:
+//   EXPO_PUBLIC_API_URL=https://—Ç–≤–æ–π-—Å–µ—Ä–≤–µ—Ä.railway.app
+// –î–ª—è –ª–æ–∫–∞–ª—å–Ω–æ–π —Ä–∞–∑—Ä–∞–±–æ—Ç–∫–∏:
+//   EXPO_PUBLIC_API_URL=http://localhost:5000
+const BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:5000';
 
 const apiClient = axios.create({
-  // “‚ÓÈ ÔÂ‚ÓÌ‡˜‡Î¸Ì˚È ·‡ÁÓ‚˚È URL. «‡ÏÂÌË IP Ì‡ ÚÓÚ, ÍÓÚÓ˚È Û ÚÂ·ˇ ÒÂÈ˜‡Ò ‚ ÎÂ‚ÓÈ ÍÓÌÒÓÎË ÒÂ‚Â‡!
-  baseURL: 'http://192.168.1.38:5000', 
-  timeout: 10000, 
+  baseURL: BASE_URL,
+  timeout: 10000,
 });
 
-// ==========================================
-// »Õ“≈–÷≈œ“Œ– «¿œ–Œ—Œ¬ (ƒÓ·‡‚ÎˇÂÚ ÔÂÙËÍÒ /api ÍÓ ‚ÒÂÏ ÔÛÚˇÏ!)
-// ==========================================
+// ‚îÄ‚îÄ‚îÄ –ò–Ω—Ç–µ—Ä—Ü–µ–ø—Ç–æ—Ä –∑–∞–ø—Ä–æ—Å–æ–≤: –¥–æ–±–∞–≤–ª—è–µ—Ç /api –∏ —Ç–æ–∫–µ–Ω –∞–≤—Ç–æ—Ä–∏–∑–∞—Ü–∏–∏ ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ
 apiClient.interceptors.request.use(
   async (config) => {
+    // –ê–≤—Ç–æ–º–∞—Ç–∏—á–µ—Å–∫–∏ –¥–æ–±–∞–≤–ª—è–µ–º /api-–ø—Ä–µ—Ñ–∏–∫—Å –µ—Å–ª–∏ –µ–≥–æ –Ω–µ—Ç
+    if (config.url && !config.url.startsWith('/api')) {
+      config.url = `/api${config.url}`;
+    }
     try {
-      // »—œ–¿¬À≈ÕŒ: ¬ÓÁ‚‡˘‡ÂÏ ‡‚ÚÓÏ‡ÚË˜ÂÒÍÛ˛ ÔÓ‰ÒÚ‡ÌÓ‚ÍÛ ÔÂÙËÍÒ‡ ÔÓ‰ Ú‚ÓÈ ÒÂ‚Â
-      if (config.url && !config.url.startsWith('/api')) {
-        config.url = `/api${config.url}`;
-      }
-      
-      const token = await SecureStore.getItemAsync('user_token');
+      const token = await tokenStorage.get('user_token');
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
       }
     } catch (error) {
-      console.log('? [API Client] Œ¯Ë·Í‡ ˜ÚÂÌËˇ ÚÓÍÂÌ‡ ËÁ SecureStore:', error.message);
+      console.log('‚ö†Ô∏è [API] –û—à–∏–±–∫–∞ —á—Ç–µ–Ω–∏—è —Ç–æ–∫–µ–Ω–∞:', error.message);
     }
     return config;
   },
   (error) => Promise.reject(error)
 );
 
-// ==========================================
-// »Õ“≈–÷≈œ“Œ– Œ“¬≈“Œ¬ («‡˘ËÚ‡ 401)
-// ==========================================
+// ‚îÄ‚îÄ‚îÄ –ò–Ω—Ç–µ—Ä—Ü–µ–ø—Ç–æ—Ä –æ—Ç–≤–µ—Ç–æ–≤: –æ–±—Ä–∞–±–æ—Ç–∫–∞ 401 ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ
 apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
-    if (error.response && error.response.status === 401) {
+    if (error.response?.status === 401) {
       try {
-        await SecureStore.deleteItemAsync('user_token');
+        await tokenStorage.delete('user_token');
         await AsyncStorage.removeItem('current_user');
-        DeviceEventEmitter.emit('FORCE_LOGOUT');
+        emitForceLogout();
       } catch (cleanError) {
-        console.log('? [API Client] Œ¯Ë·Í‡ ÔË Ó˜ËÒÚÍÂ Í˝¯‡ ÛÒÚÓÈÒÚ‚‡:', cleanError.message);
+        console.log('‚ö†Ô∏è [API] –û—à–∏–±–∫–∞ –ø—Ä–∏ –æ—á–∏—Å—Ç–∫–µ —Ç–æ–∫–µ–Ω–∞:', cleanError.message);
       }
     }
     return Promise.reject(error);
   }
 );
 
-// ==========================================
-// Ã≈“Œƒ€ ¿ƒÃ»Õ»—“–¿“Œ–¿ ( ÓÚÓ˚Â ÌÛÊÌ˚ ‰Îˇ ‡·ÓÚ˚ Ú‚ÓÂÈ AdminPanel)
-// ==========================================
+// ‚îÄ‚îÄ‚îÄ –°–µ—Ä–≤–∏—Å—ã ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ
 export const adminService = {
-  getDashboardStats: () => apiClient.get('/admin/stats'),
-  getCourses: () => apiClient.get('/courses'),
-  getUserProgress: (username) => apiClient.get('/progress', { params: { username } }),
-  createCourse: (payload) => apiClient.post('/courses', payload),
-  createLecture: (payload) => apiClient.post('/topics', payload),
+  getDashboardStats:  ()         => apiClient.get('/admin/stats'),
+  getCourses:         ()         => apiClient.get('/courses'),
+  getAdminCourses:    ()         => apiClient.get('/admin/courses'),
+  getUsers:           ()         => apiClient.get('/admin/users'),
+  getUserProgress:    (user) => apiClient.get('/admin/user-progress', {
+    params: typeof user === 'string' ? { username: user } : {
+      id: user?.id,
+      email: user?.email,
+      username: user?.username,
+    }
+  }),
+  createCourse:       (payload)  => apiClient.post('/admin/courses', payload),
+  updateCourse:       (courseId, payload) => apiClient.put(`/admin/courses/${courseId}`, payload),
+  publishCourse:      (courseId, isPublished) => apiClient.patch(`/admin/courses/${courseId}/publish`, { is_published: isPublished }),
+  deleteCourse:       (courseId) => apiClient.delete(`/admin/courses/${courseId}`),
+  createLecture:      (payload)  => apiClient.post('/topics', payload),
+  getTopics:          ()         => apiClient.get('/topics'),
+  updateTopic:        (topicId, payload) => apiClient.put(`/admin/topics/${topicId}`, payload),
+  deleteTopic:        (topicId) => apiClient.delete(`/admin/topics/${topicId}`),
 };
 
 export const profileService = {
   deleteAccount: (password) => apiClient.post('/user-delete-account', { password }),
 };
+
+// tokenStorage —ç–∫—Å–ø–æ—Ä—Ç–∏—Ä—É–µ–º –¥–ª—è –∏—Å–ø–æ–ª—å–∑–æ–≤–∞–Ω–∏—è –≤ AuthContext
+export { tokenStorage };
 
 export default apiClient;

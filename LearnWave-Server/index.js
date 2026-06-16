@@ -1,161 +1,221 @@
-const express = require('express');
-const cors = require('cors');
-const { Pool } = require('pg');
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
+п»їconst express       = require('express');
+const cors          = require('cors');
+const { Pool }      = require('pg');
+const bcrypt        = require('bcryptjs');
+const jwt           = require('jsonwebtoken');
+const passwordReset = require('./passwordReset');
 require('dotenv').config();
 
 const app = express();
 app.use(cors());
 app.use(express.json());
-// Принудительная кодировка UTF-8 для всех ответов сервера
+
+const APP_TIMEZONE = process.env.APP_TIMEZONE || 'Asia/Yekaterinburg';
+const getDateKey = (value = new Date()) => {
+  const date = value instanceof Date ? value : new Date(value);
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: APP_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const map = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  return `${map.year}-${map.month}-${map.day}`;
+};
+
+// UTF-8 Р Т‘Р В»РЎРЏ Р Р†РЎРѓР ВµРЎвЂ¦ Р С•РЎвЂљР Р†Р ВµРЎвЂљР С•Р Р†
 app.use((req, res, next) => {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   next();
 });
 
-// Логирование запросов в консоль
+// Р вЂєР С•Р С–Р С–Р ВµРЎР‚ Р В·Р В°Р С—РЎР‚Р С•РЎРѓР С•Р Р†
 app.use((req, res, next) => {
-  console.log(`[${new Date().toLocaleTimeString()}] Запрос: ${req.method} ${req.url}`);
+  console.log(`[${new Date().toLocaleTimeString()}] ${req.method} ${req.url}`);
   next();
 });
 
-// Настройка подключения к PostgreSQL
+// РІвЂќР‚РІвЂќР‚РІвЂќР‚ PostgreSQL РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚
 const pool = new Pool({
-  user: process.env.DB_USER,
-  host: process.env.DB_HOST,
+  user:     process.env.DB_USER,
+  host:     process.env.DB_HOST,
   database: process.env.DB_NAME,
   password: process.env.DB_PASSWORD,
-  port: process.env.DB_PORT,
+  port:     process.env.DB_PORT || 5432,
 });
 
 pool.connect((err) => {
-  if (err) console.error('?? Ошибка подключения к PostgreSQL:', err.stack);
-  else console.log('?? База PostgreSQL подключена успешно');
+  if (err) console.error('РІСњРЉ PostgreSQL connection error:', err.stack);
+  else {
+    console.log('РІСљвЂ¦ PostgreSQL connected');
+    pool.query('ALTER TABLE courses ADD COLUMN IF NOT EXISTS is_published BOOLEAN DEFAULT true;')
+      .catch(e => console.error('РІСњРЉ Course publish column error:', e.message));
+    pool.query(`
+      CREATE TABLE IF NOT EXISTS user_inventory (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        item_type TEXT NOT NULL,
+        item_value TEXT NOT NULL,
+        quantity INTEGER DEFAULT 1,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(user_id, item_type, item_value)
+      );
+    `).catch(e => console.error('Inventory table error:', e.message));
+    pool.query('ALTER TABLE user_inventory ADD COLUMN IF NOT EXISTS quantity INTEGER DEFAULT 1;')
+      .catch(e => console.error('Inventory quantity column error:', e.message));
+    pool.query(`
+      WITH hint_totals AS (
+        SELECT
+          user_id,
+          SUM(CASE WHEN item_value = 'hint_x3' THEN COALESCE(quantity, 1) * 3 ELSE COALESCE(quantity, 1) END)::int AS total_quantity
+        FROM user_inventory
+        WHERE item_type = 'quiz_hint'
+        GROUP BY user_id
+      ),
+      deleted AS (
+        DELETE FROM user_inventory WHERE item_type = 'quiz_hint'
+      )
+      INSERT INTO user_inventory (user_id, item_type, item_value, quantity)
+      SELECT user_id, 'quiz_hint', 'hint_5050', total_quantity
+      FROM hint_totals
+      WHERE total_quantity > 0;
+    `).catch(e => console.error('Inventory hint migration error:', e.message));
+    pool.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS user_inventory_unique_item
+      ON user_inventory (user_id, item_type, item_value);
+    `).catch(e => console.error('Inventory unique index error:', e.message));
+    // Р ВР Р…Р С‘РЎвЂ Р С‘Р В°Р В»Р С‘Р В·Р С‘РЎР‚РЎС“Р ВµР С Р СР С•Р Т‘РЎС“Р В»РЎРЉ РЎРѓР В±РЎР‚Р С•РЎРѓР В° Р С—Р В°РЎР‚Р С•Р В»РЎРЏ
+    passwordReset.init(pool);
+    passwordReset.createTable();
+  }
 });
 
-// ==========================================
-// MIDDLEWARES (БЕЗОПАСНОСТЬ)
-// ==========================================
+// Р В Р С•РЎС“РЎвЂљРЎвЂ№ РЎРѓР В±РЎР‚Р С•РЎРѓР В° Р С—Р В°РЎР‚Р С•Р В»РЎРЏ
+app.use('/api/auth', passwordReset.router);
 
-// 1. Общая проверка авторизации по JWT-токену
+// РІвЂќР‚РІвЂќР‚РІвЂќР‚ Middlewares РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚
 const authMiddleware = (req, res, next) => {
   const authHeader = req.header('Authorization');
   const token = authHeader && authHeader.split(' ')[1];
-
-  if (!token) {
-    return res.status(401).json({ success: false, error: 'Доступ запрещен. Токен отсутствует.' });
-  }
-
+  if (!token) return res.status(401).json({ success: false, error: 'РўРѕРєРµРЅ РЅРµ РїСЂРµРґРѕСЃС‚Р°РІР»РµРЅ.' });
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = decoded; // Записываем данные юзера (id, role) в объект запроса
+    req.user = jwt.verify(token, process.env.JWT_SECRET);
     next();
-  } catch (err) {
-    res.status(401).json({ success: false, error: 'Сессия истекла. Войдите заново.' });
+  } catch {
+    res.status(401).json({ success: false, error: 'РўРѕРєРµРЅ РЅРµРґРµР№СЃС‚РІРёС‚РµР»РµРЅ.' });
   }
 };
 
-// 2. Ролевая безопасность (RBAC): Проверка прав Администратора
 const adminMiddleware = (req, res, next) => {
   if (!req.user || req.user.role !== 'admin') {
-    console.warn(`?? [Блокировка]: Попытка доступа к админке! ID: ${req.user ? req.user.id : 'Неизвестен'}`);
-    return res.status(403).json({ success: false, error: 'Доступ запрещен: требуются права администратора.' });
+    console.warn(`РІвЂєвЂќ Unauthorized admin access attempt. User ID: ${req.user?.id}`);
+    return res.status(403).json({ success: false, error: 'Р”РѕСЃС‚СѓРї Р·Р°РїСЂРµС‰С‘РЅ.' });
   }
   next();
 };
 
-// ==========================================
-// ОСНОВНЫЕ МАРШРУТЫ ПРИЛОЖЕНИЯ (СОХРАНЕНЫ)
-// ==========================================
+// РІвЂќР‚РІвЂќР‚РІвЂќР‚ AUTH РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚
 
-// 1. РЕГИСТРАЦИЯ ЮЗЕРА (Уникален ТОЛЬКО email, имена могут повторяться!)
+// Р В Р ВµР С–Р С‘РЎРѓРЎвЂљРЎР‚Р В°РЎвЂ Р С‘РЎРЏ
 app.post('/api/register', async (req, res) => {
   const { email, username, password } = req.body;
+  if (!email || !username || !password)
+    return res.status(400).json({ success: false, error: 'Р’СЃРµ РїРѕР»СЏ РѕР±СЏР·Р°С‚РµР»СЊРЅС‹.' });
 
-  if (!email || !username || !password) {
-    return res.status(400).json({ success: false, error: 'Заполните все обязательные поля.' });
-  }
-
-  // Приводим email к нижнему регистру и убираем пробелы по краям для точной проверки
-  const normalizedEmail = email.toLowerCase().trim();
+  const normalizedEmail    = email.toLowerCase().trim();
   const normalizedUsername = username.trim();
 
+  // Р РЋР С—Р С‘РЎРѓР С•Р С” РЎРѓРЎС“Р С—Р ВµРЎР‚Р В°Р Т‘Р СР С‘Р Р…Р С•Р Р† Р С‘Р В· Р С—Р ВµРЎР‚Р ВµР СР ВµР Р…Р Р…Р С•Р в„– Р С•Р С”РЎР‚РЎС“Р В¶Р ВµР Р…Р С‘РЎРЏ
+  const superAdmins = (process.env.SUPER_ADMINS || '')
+    .split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+  const role = superAdmins.includes(normalizedEmail) ? 'admin' : 'student';
+
   try {
-    // Проверяем только email. Каждая буква и цифра имеют значение!
     const emailCheck = await pool.query('SELECT id FROM users WHERE email = $1', [normalizedEmail]);
-    if (emailCheck.rows.length > 0) {
-      return res.status(400).json({ success: false, error: 'Пользователь с такой почтой уже существует.' });
-    }
+    if (emailCheck.rows.length > 0)
+      return res.status(400).json({ success: false, error: 'Email СѓР¶Рµ Р·Р°РЅСЏС‚.' });
+    const salt   = await bcrypt.genSalt(10);
+    const hashed = await bcrypt.hash(password, salt);
 
-    // Хэшируем пароль
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-
-    // Записываем в базу данных
     const result = await pool.query(
       'INSERT INTO users (email, username, password, role) VALUES ($1, $2, $3, $4) RETURNING id, username, role',
-      [normalizedEmail, normalizedUsername, hashedPassword, 'student'] // По умолчанию роль student
+      [normalizedEmail, normalizedUsername, hashed, role]
     );
-
-    console.log(`[?? Регистрация]: Успешно создан пользователь: ${normalizedUsername} (${normalizedEmail})`);
+    console.log(`[РІСљвЂ¦ Register] ${normalizedUsername} (${normalizedEmail})`);
     res.status(201).json({ success: true, user: result.rows[0] });
   } catch (err) {
-    console.error('? Ошибка записи регистрации в PostgreSQL:', err.message);
-    res.status(500).json({ success: false, error: 'Внутренняя ошибка базы данных.' });
+    console.error('РІСњРЉ Register error:', err.message);
+    res.status(500).json({ success: false, error: 'РћС€РёР±РєР° СЃРµСЂРІРµСЂР°.' });
   }
 });
 
-
-
-// 2. АВТОРИЗАЦИЯ (ВХОД) — ФИКС ОБЪЕКТА ЮЗЕРА
+// Р вЂ™РЎвЂ¦Р С•Р Т‘
 app.post('/api/login', async (req, res) => {
   const { email, password } = req.body;
-
-  if (!email || !password) {
-    return res.status(400).json({ success: false, error: 'Заполните все поля.' });
-  }
+  if (!email || !password)
+    return res.status(400).json({ success: false, error: 'Р’СЃРµ РїРѕР»СЏ РѕР±СЏР·Р°С‚РµР»СЊРЅС‹.' });
 
   try {
-    const result = await pool.query('SELECT * FROM users WHERE email = $1', [email.toLowerCase().trim()]);
-    if (result.rows.length === 0) {
-      return res.status(400).json({ success: false, error: 'Неверный email или пароль.' });
-    }
+    const result = await pool.query(
+      'SELECT *, last_login::text AS last_login_key FROM users WHERE email = $1',
+      [email.toLowerCase().trim()]
+    );
+    if (result.rows.length === 0)
+      return res.status(400).json({ success: false, error: 'РџРѕР»СЊР·РѕРІР°С‚РµР»СЊ СЃ С‚Р°РєРёРј email РЅРµ РЅР°Р№РґРµРЅ.' });
 
-    const user = result.rows[0];
-
+    const user    = result.rows[0];
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(400).json({ success: false, error: 'Неверный email или пароль.' });
-    }
+    if (!isMatch)
+      return res.status(400).json({ success: false, error: 'РќРµРІРµСЂРЅС‹Р№ РїР°СЂРѕР»СЊ.' });
 
-    // Обновляем стрик активности
+    // Streak
     let newStreak = user.streak_count || 0;
-    const today = new Date().toISOString().split('T')[0]; // Текущая дата (ГГГГ-ММ-ДД)
-
+    const today   = getDateKey();
+    let freezeUsed = false;
+    let freezeDaysLeft = 0;
     if (user.last_login) {
-      const lastLoginDate = new Date(user.last_login).toISOString().split('T')[0];
-
-      if (lastLoginDate !== today) {
-        const diffTime = Math.abs(new Date(today) - new Date(lastLoginDate));
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
+      const last    = user.last_login_key || getDateKey(user.last_login);
+      const diffMs  = Math.abs(new Date(`${today}T00:00:00Z`) - new Date(`${last}T00:00:00Z`));
+      const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+      if (last !== today) {
         if (diffDays === 1) {
-          newStreak += 1; // Зашел на следующий день
-        } else if (diffDays > 1) {
-          newStreak = 1;  // Пропустил дни -> сброс в 1
+          newStreak += 1;
+        } else if (diffDays === 2) {
+          const freezeResult = await pool.query(
+            `UPDATE user_inventory
+             SET quantity = quantity - 1
+             WHERE id = (
+               SELECT id
+               FROM user_inventory
+               WHERE user_id = $1
+                 AND item_type = 'streak_freeze'
+                 AND item_value = 'freeze_day'
+                 AND quantity > 0
+               ORDER BY id ASC
+               LIMIT 1
+             )
+             RETURNING quantity`,
+            [user.id]
+          );
+          if (freezeResult.rows.length > 0) {
+            freezeUsed = true;
+            freezeDaysLeft = Math.max(freezeResult.rows[0].quantity || 0, 0);
+            await pool.query("DELETE FROM user_inventory WHERE user_id = $1 AND item_type = 'streak_freeze' AND item_value = 'freeze_day' AND quantity <= 0", [user.id]);
+          } else {
+            newStreak = 1;
+          }
+        } else {
+          newStreak = 1;
         }
       }
     } else {
-      newStreak = 1; // Самый первый вход
+      newStreak = 1;
     }
-
     await pool.query(
-      'UPDATE users SET streak_count = $1, last_login = CURRENT_DATE WHERE id = $2',
-      [newStreak, user.id]
+      'UPDATE users SET streak_count = $1, last_login = $2 WHERE id = $3',
+      [newStreak, today, user.id]
     );
 
-    // Зашиваем id и роль в JWT-токен
     const token = jwt.sign(
       { id: user.id, role: user.role || 'student' },
       process.env.JWT_SECRET,
@@ -166,389 +226,619 @@ app.post('/api/login', async (req, res) => {
       success: true,
       token,
       user: {
-        username: user.username,
-        email: user.email,
-        role: user.role || 'student',
-        balance: user.balance || 0,
-        streak_count: newStreak // ??
+        id:           user.id,
+        username:     user.username,
+        email:        user.email,
+        role:         user.role || 'student',
+        balance:      user.balance || 0,
+        streak_count: newStreak,
+        freeze_used:  freezeUsed,
+        freeze_days_left: freezeDaysLeft,
       }
     });
-
-
   } catch (err) {
-    console.error('? Критическая ошибка авторизации в PG:', err.message);
-    return res.status(500).json({ success: false, error: 'Внутренняя ошибка сервера при входе.' });
+    console.error('РІСњРЉ Login error:', err.message);
+    return res.status(500).json({ success: false, error: 'РћС€РёР±РєР° СЃРµСЂРІРµСЂР°.' });
   }
 });
 
-
-
-// 3. ПОЛУЧЕНИЕ ПРОФИЛЯ (ФИКС ДЛЯ АВТО-ВХОДА)
+// Р СџРЎР‚Р С•РЎвЂћР С‘Р В»РЎРЉ
 app.get('/api/profile', authMiddleware, async (req, res) => {
   try {
     const result = await pool.query(
       'SELECT id, username, email, role, balance, streak_count FROM users WHERE id = $1',
       [req.user.id]
     );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ success: false, error: 'Пользователь не найден.' });
-    }
-
-    // Возвращаем строго первую строку (объект), а не массив строк
+    if (result.rows.length === 0)
+      return res.status(404).json({ success: false, error: 'РџРѕР»СЊР·РѕРІР°С‚РµР»СЊ РЅРµ РЅР°Р№РґРµРЅ.' });
     return res.json({ success: true, user: result.rows[0] });
   } catch (err) {
-    console.error('? Ошибка авто-входа:', err.message);
-    return res.status(500).json({ success: false, error: 'Ошибка сервера.' });
+    console.error('РІСњРЉ Profile error:', err.message);
+    return res.status(500).json({ success: false, error: 'РћС€РёР±РєР° СЃРµСЂРІРµСЂР°.' });
   }
 });
 
+app.get('/api/leaderboard', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT id, username, email, balance, streak_count
+      FROM users
+      ORDER BY balance DESC, streak_count DESC, id ASC
+      LIMIT 50
+    `);
+    res.json({ success: true, leaders: result.rows });
+  } catch (err) {
+    console.error('Leaderboard error:', err.message);
+    res.status(500).json({ success: false, error: 'РћС€РёР±РєР° СЃРµСЂРІРµСЂР°.' });
+  }
+});
 
-// 4. ПОЛУЧЕНИЕ СПИСКА КУРСОВ, СГРУППИРОВАННЫХ ПО КАТЕГОРИЯМ
+// Р РЋР В±РЎР‚Р С•РЎРѓ Р С—Р В°РЎР‚Р С•Р В»РЎРЏ РІР‚вЂќ РЎР‚Р ВµР В°Р В»Р С‘Р В·Р С•Р Р†Р В°Р Р… Р Р† passwordReset.js (Р С—Р С•Р Т‘Р С”Р В»РЎР‹РЎвЂЎРЎвЂР Р… Р Р†РЎвЂ№РЎв‚¬Р Вµ РЎвЂЎР ВµРЎР‚Р ВµР В· app.use)
+
+// РІвЂќР‚РІвЂќР‚РІвЂќР‚ Р С™Р Р€Р В Р РЋР В« РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚
 app.get('/api/courses', async (req, res) => {
   try {
-    // Делаем JOIN таблиц, чтобы вытащить курсы вместе с их категориями
-    const queryText = `
-      SELECT 
-        c.id AS category_id, 
-        c.title AS category_title, 
+    const result = await pool.query(`
+      SELECT
+        c.id   AS category_id,
+        c.title AS category_title,
         c.color AS category_color,
-        co.id AS course_id, 
-        co.title AS course_title, 
-        co.description, 
-        co.icon_name, 
-        co.color AS course_color, 
-        co.subject_key
+        co.id          AS course_id,
+        co.title       AS course_title,
+        co.description,
+        co.icon_name,
+        co.color       AS course_color,
+        co.subject_key,
+        COALESCE(co.is_published, true) AS is_published,
+        COUNT(t.id)::int AS topic_count
       FROM categories c
-      LEFT JOIN courses co ON c.id = co.category_id
+      LEFT JOIN courses co ON c.id = co.category_id AND COALESCE(co.is_published, true) = true
+      LEFT JOIN topics t ON t.course_id = co.id OR t.subject_key = co.subject_key
+      GROUP BY c.id, c.title, c.color, co.id, co.title, co.description, co.icon_name, co.color, co.subject_key, co.is_published
       ORDER BY c.id ASC, co.id ASC
-    `;
+    `);
 
-    const result = await pool.query(queryText);
-
-    // Формируем чистую структуру для фронтенда
-    const categoriesMap = {};
-
+    const map = {};
     result.rows.forEach(row => {
-      if (!categoriesMap[row.category_id]) {
-        categoriesMap[row.category_id] = {
-          id: row.category_id,
-          title: row.category_title,
-          color: row.category_color,
-          subjects: []
-        };
+      if (!map[row.category_id]) {
+        map[row.category_id] = { id: row.category_id, title: row.category_title, color: row.category_color, subjects: [] };
       }
-
-      // Если у категории есть курс, добавляем его в массив subjects
       if (row.course_id) {
-        categoriesMap[row.category_id].subjects.push({
-          id: row.course_id,
-          title: row.course_title,
+        map[row.category_id].subjects.push({
+          id:          row.course_id,
+          title:       row.course_title,
           description: row.description,
-          icon_name: row.icon_name,
-          color: row.course_color,
-          subject_key: row.subject_key
+          icon_name:   row.icon_name,
+          color:       row.course_color,
+          subject_key: row.subject_key,
+          is_published: row.is_published,
+          topic_count: row.topic_count || 0,
         });
       }
     });
 
-    // Превращаем объект обратно в чистый массив категорий
-    const formattedCategories = Object.values(categoriesMap);
-
-    res.json({ success: true, categories: formattedCategories });
+    res.json({ success: true, categories: Object.values(map) });
   } catch (err) {
-    console.error('? Ошибка при загрузке сгруппированных курсов:', err.message);
-    res.status(500).json({ success: false, error: 'Ошибка при загрузке каталога курсов' });
+    console.error('РІСњРЉ Courses error:', err.message);
+    res.status(500).json({ success: false, error: 'РћС€РёР±РєР° СЃРµСЂРІРµСЂР°.' });
   }
 });
 
+// РІвЂќР‚РІвЂќР‚РІвЂќР‚ Р СћР вЂўР СљР В« РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚
+app.get('/api/topics', async (req, res) => {
+  try {
+    const { subject_key } = req.query;
+    let result;
+    if (subject_key) {
+      result = await pool.query('SELECT * FROM topics WHERE subject_key = $1 ORDER BY id ASC', [subject_key]);
+    } else {
+      result = await pool.query('SELECT * FROM topics ORDER BY id ASC');
+    }
+    res.json({ success: true, topics: result.rows });
+  } catch (err) {
+    console.error('РІСњРЉ Topics error:', err.message);
+    res.status(500).json({ success: false, error: 'РћС€РёР±РєР° СЃРµСЂРІРµСЂР°.' });
+  }
+});
 
-// 5. СОХРАНЕНИЕ ПРОГРЕССА СТУДЕНТА (ЗАЩИТА ОТ НАКРУТКИ МОНЕТ)
-app.post('/api/progress', authMiddleware, async (req, res) => {
-  const { topic_id } = req.body;
-  if (!topic_id) return res.status(400).json({ success: false, error: 'Не указан ID темы.' });
+// Р ВР РЋР СџР В Р С’Р вЂ™Р вЂєР вЂўР СњР С›: Р Т‘Р С•Р В±Р В°Р Р†Р В»Р ВµР Р… POST /api/topics РІР‚вЂќ Р Р…РЎС“Р В¶Р ВµР Р… AdminPanel Р Т‘Р В»РЎРЏ Р В·Р В°Р С–РЎР‚РЎС“Р В·Р С”Р С‘ Р В»Р ВµР С”РЎвЂ Р С‘Р в„–
+app.post('/api/topics', authMiddleware, adminMiddleware, async (req, res) => {
+  const { title, course_id, subject_key, content, description, quiz_question, quiz_answer, difficulty } = req.body;
+  if (!title || !subject_key || !content)
+    return res.status(400).json({ success: false, error: 'РќР°Р·РІР°РЅРёРµ, РєР»СЋС‡ Рё СЃРѕРґРµСЂР¶РёРјРѕРµ РѕР±СЏР·Р°С‚РµР»СЊРЅС‹.' });
+  try {
+    const result = await pool.query(
+      `INSERT INTO topics (title, course_id, subject_key, content, description, quiz_question, quiz_answer, difficulty)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+      [title.trim(), course_id || null, subject_key, content, description || '', quiz_question || '', quiz_answer || '', difficulty || 1]
+    );
+    console.log(`[РІСљвЂ¦ Topic created] "${title}" by admin ID ${req.user.id}`);
+    res.status(201).json({ success: true, topic: result.rows[0] });
+  } catch (err) {
+    console.error('РІСњРЉ Create topic error:', err.message);
+    res.status(500).json({ success: false, error: 'РћС€РёР±РєР° СЃРµСЂРІРµСЂР°.' });
+  }
+});
+
+app.put('/api/admin/topics/:id', authMiddleware, adminMiddleware, async (req, res) => {
+  const topicId = req.params.id;
+  const { title, content, description, quiz_question, quiz_answer, difficulty } = req.body;
+  if (!title || title.trim().length < 3)
+    return res.status(400).json({ success: false, error: 'РќР°Р·РІР°РЅРёРµ С‚РµРјС‹ СЃР»РёС€РєРѕРј РєРѕСЂРѕС‚РєРѕРµ.' });
+  if (!content || content.trim().length < 20)
+    return res.status(400).json({ success: false, error: 'РњР°С‚РµСЂРёР°Р» С‚РµРјС‹ СЃР»РёС€РєРѕРј РєРѕСЂРѕС‚РєРёР№.' });
 
   try {
-    // Проверяем, есть ли уже такая запись
-    const checkProgress = await pool.query(
+    const result = await pool.query(
+      `UPDATE topics
+       SET title = $1, content = $2, description = $3, quiz_question = $4, quiz_answer = $5, difficulty = $6
+       WHERE id = $7
+       RETURNING *`,
+      [title.trim(), content.trim(), description || '', quiz_question || '', quiz_answer || '', difficulty || 1, topicId]
+    );
+    if (result.rows.length === 0)
+      return res.status(404).json({ success: false, error: 'РўРµРјР° РЅРµ РЅР°Р№РґРµРЅР°.' });
+    res.json({ success: true, topic: result.rows[0] });
+  } catch (err) {
+    console.error('РІСњРЉ Update topic error:', err.message);
+    res.status(500).json({ success: false, error: 'РћС€РёР±РєР° СЃРµСЂРІРµСЂР°.' });
+  }
+});
+
+// РІвЂќР‚РІвЂќР‚РІвЂќР‚ Р СџР В Р С›Р вЂњР В Р вЂўР РЋР РЋ РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚
+app.delete('/api/admin/topics/:id', authMiddleware, adminMiddleware, async (req, res) => {
+  const topicId = req.params.id;
+  try {
+    await pool.query('BEGIN');
+    await pool.query('DELETE FROM progress WHERE topic_id = $1', [topicId]);
+    const result = await pool.query('DELETE FROM topics WHERE id = $1 RETURNING id, title', [topicId]);
+    if (result.rows.length === 0) {
+      await pool.query('ROLLBACK');
+      return res.status(404).json({ success: false, error: 'РўРµРјР° РЅРµ РЅР°Р№РґРµРЅР°.' });
+    }
+    await pool.query('COMMIT');
+    res.json({ success: true, topic: result.rows[0] });
+  } catch (err) {
+    await pool.query('ROLLBACK');
+    console.error('Delete topic error:', err.message);
+    res.status(500).json({ success: false, error: 'РћС€РёР±РєР° СЃРµСЂРІРµСЂР°.' });
+  }
+});
+app.post('/api/progress', authMiddleware, async (req, res) => {
+  const { topic_id } = req.body;
+  if (!topic_id) return res.status(400).json({ success: false, error: 'РќРµ РїРµСЂРµРґР°РЅ topic_id.' });
+  try {
+    const check = await pool.query(
       'SELECT id FROM progress WHERE user_id = $1 AND topic_id = $2',
       [req.user.id, topic_id]
     );
+    if (check.rows.length > 0)
+      return res.json({ success: true, message: 'РЈР¶Рµ РїСЂРѕР№РґРµРЅРѕ.' });
 
-    if (checkProgress.rows.length > 0) {
-      return res.json({ success: true, message: 'Тема уже была пройдена ранее.' });
-    }
-
-    // Если темы нет, сохраняем и начисляем монеты
     await pool.query('BEGIN');
-    await pool.query(
-      'INSERT INTO progress (user_id, topic_id) VALUES ($1, $2)',
-      [req.user.id, topic_id]
-    );
+    await pool.query('INSERT INTO progress (user_id, topic_id) VALUES ($1, $2)', [req.user.id, topic_id]);
     await pool.query('UPDATE users SET balance = balance + 50 WHERE id = $1', [req.user.id]);
     await pool.query('COMMIT');
-
     res.json({ success: true, reward: 50 });
   } catch (err) {
     await pool.query('ROLLBACK');
-    console.error('Ошибка прогресса:', err.message);
-    res.status(500).json({ success: false, error: 'Ошибка сохранения прогресса' });
+    console.error('РІСњРЉ Progress error:', err.message);
+    res.status(500).json({ success: false, error: 'РћС€РёР±РєР° СЃРµСЂРІРµСЂР°.' });
   }
 });
 
-
-// 6. ПОЛУЧЕНИЕ ПРОГРЕССА ДЛЯ СИНХРОНИЗАЦИИ С SQLITE
 app.get('/api/progress', authMiddleware, async (req, res) => {
   try {
-    const result = await pool.query(
-      'SELECT topic_id FROM progress WHERE user_id = $1',
-      [req.user.id]
-    );
-    // Отдаем массив чистых ID: [1, 5, 12]
-    res.json({ success: true, completed: result.rows.map(row => row.topic_id) });
+    const result = await pool.query(`
+      SELECT p.topic_id, t.subject_key
+      FROM progress p
+      LEFT JOIN topics t ON t.id = p.topic_id
+      WHERE p.user_id = $1
+      ORDER BY p.topic_id ASC
+    `, [req.user.id]);
+    res.json({ success: true, completed: result.rows });
   } catch (err) {
-    res.status(500).json({ success: false, error: 'Ошибка получения прогресса' });
+    res.status(500).json({ success: false, error: 'РћС€РёР±РєР° СЃРµСЂРІРµСЂР°.' });
   }
 });
 
-
-// 7. ПОЛУЧЕНИЕ ГЛОССАРИЯ (С ФИЛЬТРАЦИЕЙ ПО ПРЕДМЕТУ ИЛИ БЕЗ)
+// РІвЂќР‚РІвЂќР‚РІвЂќР‚ Р вЂњР вЂєР С›Р РЋР РЋР С’Р В Р ВР в„ў РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚
 app.get('/api/glossary', async (req, res) => {
-  const { subject } = req.query; // Получаем ?subject=Math из URL если есть
+  const { subject } = req.query;
   try {
-    let result;
-    if (subject) {
-      result = await pool.query('SELECT * FROM glossary WHERE subject_key = $1 ORDER BY term ASC', [subject]);
-    } else {
-      result = await pool.query('SELECT * FROM glossary ORDER BY term ASC');
-    }
+    const result = subject
+      ? await pool.query('SELECT * FROM glossary WHERE subject_key = $1 ORDER BY term ASC', [subject])
+      : await pool.query('SELECT * FROM glossary ORDER BY term ASC');
     res.json({ success: true, glossary: result.rows });
   } catch (err) {
-    console.error('? Ошибка загрузки глоссария из PG:', err.message);
-    res.status(500).json({ success: false, error: 'Ошибка при загрузке глоссария' });
+    console.error('РІСњРЉ Glossary error:', err.message);
+    res.status(500).json({ success: false, error: 'РћС€РёР±РєР° СЃРµСЂРІРµСЂР°.' });
   }
 });
 
-// DELETE ACCOUNT (HYBRID: ENGLISH LOGS + RUSSIAN RESPONSES)
-app.post('/api/user-delete-account', authMiddleware, async (req, res) => {
-  console.log('\n--- [BACKEND: DELETE ACCOUNT STARTED] ---');
-
-  const { password } = req.body;
-  const userId = req.user?.id; // Извлекаем ID из токена через middleware
-
-  if (!userId) {
-    console.log('? Error: userId is missing in token');
-    return res.status(401).json({ success: false, error: 'Пользователь не авторизован.' });
-  }
-
-  if (!password) {
-    console.log('? Error: Password is empty in req.body');
-    return res.status(400).json({ success: false, error: 'Пожалуйста, введите текущий пароль.' });
-  }
-
+// РІвЂќР‚РІвЂќР‚РІвЂќР‚ Р вЂР С’Р вЂєР С’Р СњР РЋ РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚
+// Р ВР РЋР СџР В Р С’Р вЂ™Р вЂєР вЂўР СњР С›: Р Т‘Р С•Р В±Р В°Р Р†Р В»Р ВµР Р… РЎРЊР Р…Р Т‘Р С—Р С•Р С‘Р Р…РЎвЂљ Р Т‘Р В»РЎРЏ Р С—Р С•Р С”РЎС“Р С—Р С•Р С” Р Р† ShopScreen Р С‘ ProfileScreen
+app.post('/api/user/update-balance', authMiddleware, async (req, res) => {
+  const { balance } = req.body;
+  if (balance === undefined || balance < 0)
+    return res.status(400).json({ success: false, error: 'РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ Р±Р°Р»Р°РЅСЃ.' });
   try {
-    console.log(`?? Searching for user ID: ${userId} in PostgreSQL...`);
-    
-    // Используем pool.query и ищем строго по идентификатору id
-    const userResult = await pool.query('SELECT * FROM users WHERE id = $1', [userId]);
-
-    if (userResult.rows.length === 0) {
-      console.log('? Error: User not found in database.');
-      return res.status(404).json({ success: false, error: 'Пользователь не найден.' });
-    }
-
-    const currentUser = userResult.rows[0];
-    console.log(`? User found: ${currentUser.username || 'No Name'} (${currentUser.email})`);
-
-    console.log('?? Verifying password hash via bcrypt...');
-    // Проверяем поле хэша пароля (поддерживаем оба варианта именования колонки в БД)
-    const isMatch = await bcrypt.compare(password, currentUser.password_hash || currentUser.password);
-    if (!isMatch) {
-      console.log('? Error: Provided password does not match.');
-      return res.status(400).json({ success: false, error: 'Неверный пароль.' });
-    }
-
-    console.log('?? [Transaction]: Opening SQL transaction...');
-    await pool.query('BEGIN');
-
-    try {
-      console.log('??? Deleting user progress from "user_progress" table...');
-      // Каскадно удаляем прогресс из таблицы user_progress по внешнему ключу
-      await pool.query('DELETE FROM progress WHERE user_id = $1', [userId]);
-
-      console.log('??? Deleting user record from "users" table...');
-      // Удаляем саму учетную запись
-      await pool.query('DELETE FROM users WHERE id = $1', [userId]);
-
-      await pool.query('COMMIT');
-      console.log(`?? [SUCCESS]: User ID ${userId} deleted successfully.`);
-      console.log('-----------------------------------------\n');
-      return res.json({ success: true });
-
-    } catch (dbError) {
-      await pool.query('ROLLBACK');
-      console.error('? [DATABASE TRANSACTION FAILED]:', dbError.message);
-      return res.status(500).json({ success: false, error: 'Ошибка базы данных при удалении.' });
-    }
-
+    await pool.query('UPDATE users SET balance = $1 WHERE id = $2', [balance, req.user.id]);
+    res.json({ success: true, balance });
   } catch (err) {
-    console.error('?? [CRITICAL ROUTE ERROR]:', err.message);
-    return res.status(500).json({ success: false, error: 'Внутренняя ошибка сервера.' });
+    console.error('РІСњРЉ Balance update error:', err.message);
+    res.status(500).json({ success: false, error: 'РћС€РёР±РєР° СЃРµСЂРІРµСЂР°.' });
   }
 });
 
-
-
-// ==========================================
-// АДМИНКА 2.0 & RBAC (НОВЫЕ ЭНДПОИНТЫ)
-// ==========================================
-
-// Эндпоинт статистики для экрана AdminDashboard.js
-app.get('/api/admin/dashboard-stats', authMiddleware, adminMiddleware, async (req, res) => {
-  try {
-    const usersCount = await pool.query('SELECT COUNT(*) FROM users');
-    const coursesCount = await pool.query('SELECT COUNT(*) FROM courses');
-
-    res.json({
-      success: true,
-      stats: {
-        totalUsers: parseInt(usersCount.rows[0].count),
-        totalCourses: parseInt(coursesCount.rows[0].count)
-      }
-    });
-  } catch (err) {
-    res.status(500).json({ success: false, error: 'Ошибка сбора статистики' });
-  }
-});
-
-// Создание нового курса (с пошаговой валидацией)
-app.post('/api/admin/courses', authMiddleware, adminMiddleware, async (req, res) => {
-  const { title, description, category_id, icon_name, color } = req.body;
-
-  // Жесткая серверная проверка входящих данных
-  if (!title || title.trim().length < 3) {
-    return res.status(400).json({ success: false, error: 'Название курса должно содержать от 3 символов.' });
-  }
-  if (!description || description.trim().length > 500) {
-    return res.status(400).json({ success: false, error: 'Описание обязательно (до 500 символов).' });
-  }
-
-  try {
-    const result = await pool.query(
-      'INSERT INTO courses (title, description, category_id, icon_name, color) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-      [title.trim(), description.trim(), category_id, icon_name || 'book', color || '#4A90E2']
-    );
-
-    console.log(`[?? Админка]: Администратор ${req.user.id} создал курс "${title}"`);
-    res.status(201).json({ success: true, course: result.rows[0] });
-  } catch (err) {
-    console.error('? Ошибка создания курса в PG:', err.message);
-    res.status(500).json({ success: false, error: 'Не удалось сохранить курс в базу данных.' });
-  }
-});
-
-// Полное удаление курса из PostgreSQL
-app.delete('/api/admin/courses/:id', authMiddleware, adminMiddleware, async (req, res) => {
-  const courseId = req.params.id;
-  try {
-    const result = await pool.query('DELETE FROM courses WHERE id = $1 RETURNING id', [courseId]);
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ success: false, error: 'Данный курс не найден в базе.' });
-    }
-
-    console.log(`[?? Админка]: Курс ID ${courseId} успешно удален.`);
-    res.json({ success: true, message: `Курс успешно удален.` });
-  } catch (err) {
-    console.error('? Ошибка удаления курса:', err.message);
-    res.status(500).json({ success: false, error: 'Ошибка сервера при удалении записи.' });
-  }
-});
-
-// ПОЛУЧЕНИЕ ВСЕХ ТЕМ ДЛЯ СИНХРОНИЗАЦИИ (БЕЗОПАСНЫЙ ВАРИАНТ)
-app.get('/api/topics', async (req, res) => {
-  try {
-    // ?? ИСПРАВЛЕНО: Сортируем просто по id, чтобы база данных не ругалась на отсутствие sort_order
-    const result = await pool.query('SELECT * FROM topics ORDER BY id ASC');
-    res.json({ success: true, topics: result.rows });
-  } catch (err) {
-    console.error('? Ошибка при загрузке списка тем:', err.message);
-    res.status(500).json({ success: false, error: 'Ошибка сервера при загрузке тем' });
-  }
-});
-
-// ==========================================
-// ?? WAVE-SHOP (МАГАЗИН ЗА МОНЕТЫ)
-// ==========================================
-
+// РІвЂќР‚РІвЂќР‚РІвЂќР‚ Р СљР С’Р вЂњР С’Р вЂ”Р ВР Сњ РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚
 app.post('/api/shop/buy', authMiddleware, async (req, res) => {
   const { item_type, item_value, price } = req.body;
   const userId = req.user.id;
-
-  if (!item_type || !item_value || !price) {
-    return res.status(400).json({ success: false, error: 'Неполные данные о товаре.' });
-  }
-
+  if (!item_type || !item_value || !price)
+    return res.status(400).json({ success: false, error: 'РќРµРїРѕР»РЅС‹Рµ РґР°РЅРЅС‹Рµ.' });
   try {
-    // 1. Проверяем текущий баланс пользователя
     const userCheck = await pool.query('SELECT balance FROM users WHERE id = $1', [userId]);
-    if (userCheck.rows.length === 0) {
-      return res.status(404).json({ success: false, error: 'Пользователь не найден.' });
-    }
+    if (userCheck.rows.length === 0)
+      return res.status(404).json({ success: false, error: 'РџРѕР»СЊР·РѕРІР°С‚РµР»СЊ РЅРµ РЅР°Р№РґРµРЅ.' });
 
     const currentBalance = userCheck.rows[0].balance || 0;
+    if (currentBalance < price)
+      return res.status(400).json({ success: false, error: 'РќРµРґРѕСЃС‚Р°С‚РѕС‡РЅРѕ РјРѕРЅРµС‚.' });
 
-    // 2. Проверяем, хватает ли монет
-    if (currentBalance < price) {
-      return res.status(400).json({ success: false, error: 'Недостаточно монет для покупки! Учите темы активнее. ??' });
-    }
+    const normalizedItemValue = item_type === 'quiz_hint' ? 'hint_5050'
+      : item_type === 'streak_freeze' ? 'freeze_day'
+      : item_value;
+    const quantityToAdd = item_type === 'quiz_hint' && item_value === 'hint_x3' ? 3 : 1;
 
-    // 3. Если товар — косметическая рамка, проверяем, не куплена ли она уже
     if (item_type === 'frame') {
       const frameCheck = await pool.query(
         'SELECT id FROM user_inventory WHERE user_id = $1 AND item_type = $2 AND item_value = $3',
-        [userId, item_type, item_value]
+        [userId, item_type, normalizedItemValue]
       );
-      if (frameCheck.rows.length > 0) {
-        return res.status(400).json({ success: false, error: 'Эта рамка уже куплена и доступна в профиле!' });
-      }
+      if (frameCheck.rows.length > 0)
+        return res.status(400).json({ success: false, error: 'РЈР¶Рµ РєСѓРїР»РµРЅРѕ.' });
     }
 
-    // 4. Открываем транзакцию для безопасного списания баланса
     await pool.query('BEGIN');
-
-    // Списываем монеты
     await pool.query('UPDATE users SET balance = balance - $1 WHERE id = $2', [price, userId]);
-
-    // Добавляем вещь в инвентарь
-    await pool.query(
-      'INSERT INTO user_inventory (user_id, item_type, item_value) VALUES ($1, $2, $3)',
-      [userId, item_type, item_value]
-    );
-
+    if (item_type === 'frame') {
+      await pool.query(
+        'INSERT INTO user_inventory (user_id, item_type, item_value, quantity) VALUES ($1, $2, $3, 1)',
+        [userId, item_type, normalizedItemValue]
+      );
+    } else {
+      await pool.query(
+        `INSERT INTO user_inventory (user_id, item_type, item_value, quantity)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (user_id, item_type, item_value)
+         DO UPDATE SET quantity = user_inventory.quantity + EXCLUDED.quantity`,
+        [userId, item_type, normalizedItemValue, quantityToAdd]
+      );
+    }
     await pool.query('COMMIT');
 
-    // Рассчитываем новый баланс для возврата на фронтенд
     const newBalance = currentBalance - price;
-
-    console.log(`?? [Shop]: Пользователь ID ${userId} купил ${item_value} за ${price} монет.`);
-    res.json({ success: true, newBalance, message: 'Покупка успешно совершена!' });
-
+    console.log(`СЂСџвЂ™В° [Shop] User ${userId} bought ${item_value} for ${price} coins.`);
+    res.json({ success: true, newBalance, item_value: normalizedItemValue, quantityAdded: quantityToAdd, message: 'РџРѕРєСѓРїРєР° СѓСЃРїРµС€РЅР°.' });
   } catch (err) {
     await pool.query('ROLLBACK');
-    console.error('? Ошибка транзакции магазина:', err.message);
-    res.status(500).json({ success: false, error: 'Ошибка сервера при обработке покупки.' });
+    console.error('РІСњРЉ Shop error:', err.message);
+    res.status(500).json({ success: false, error: 'РћС€РёР±РєР° СЃРµСЂРІРµСЂР°.' });
   }
 });
 
-// Запуск сервера
+// РІвЂќР‚РІвЂќР‚РІвЂќР‚ Р Р€Р вЂќР С’Р вЂєР вЂўР СњР ВР вЂў Р С’Р С™Р С™Р С’Р Р€Р СњР СћР С’ РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚
+app.get('/api/shop/inventory', authMiddleware, async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT item_type, item_value, quantity FROM user_inventory WHERE user_id = $1 ORDER BY id ASC',
+      [req.user.id]
+    );
+    res.json({ success: true, items: result.rows });
+  } catch (err) {
+    console.error('Inventory error:', err.message);
+    res.status(500).json({ success: false, error: 'РћС€РёР±РєР° СЃРµСЂРІРµСЂР°.' });
+  }
+});
+
+app.post('/api/shop/use-item', authMiddleware, async (req, res) => {
+  const { item_type, item_value } = req.body;
+  const normalizedItemValue = item_type === 'quiz_hint' ? 'hint_5050'
+    : item_type === 'streak_freeze' ? 'freeze_day'
+    : item_value;
+  if (!item_type || !normalizedItemValue)
+    return res.status(400).json({ success: false, error: 'РќРµРїРѕР»РЅС‹Рµ РґР°РЅРЅС‹Рµ.' });
+
+  try {
+    await pool.query('BEGIN');
+    const item = await pool.query(
+      'SELECT id, quantity FROM user_inventory WHERE user_id = $1 AND item_type = $2 AND item_value = $3 FOR UPDATE',
+      [req.user.id, item_type, normalizedItemValue]
+    );
+    if (item.rows.length === 0 || (item.rows[0].quantity || 0) <= 0) {
+      await pool.query('ROLLBACK');
+      return res.status(400).json({ success: false, error: 'РџСЂРµРґРјРµС‚ РЅРµРґРѕСЃС‚СѓРїРµРЅ.' });
+    }
+    const nextQuantity = (item.rows[0].quantity || 0) - 1;
+    if (nextQuantity > 0) {
+      await pool.query('UPDATE user_inventory SET quantity = $1 WHERE id = $2', [nextQuantity, item.rows[0].id]);
+    } else {
+      await pool.query('DELETE FROM user_inventory WHERE id = $1', [item.rows[0].id]);
+    }
+    await pool.query('COMMIT');
+    res.json({ success: true, item_value: normalizedItemValue, quantity: nextQuantity });
+  } catch (err) {
+    await pool.query('ROLLBACK');
+    console.error('Use item error:', err.message);
+    res.status(500).json({ success: false, error: 'РћС€РёР±РєР° СЃРµСЂРІРµСЂР°.' });
+  }
+});
+app.post('/api/user-delete-account', authMiddleware, async (req, res) => {
+  const { password } = req.body;
+  const userId = req.user?.id;
+  if (!userId) return res.status(401).json({ success: false, error: 'РќРµС‚ Р°РІС‚РѕСЂРёР·Р°С†РёРё.' });
+  if (!password) return res.status(400).json({ success: false, error: 'РќСѓР¶РµРЅ РїР°СЂРѕР»СЊ.' });
+  try {
+    const userResult = await pool.query('SELECT * FROM users WHERE id = $1', [userId]);
+    if (userResult.rows.length === 0)
+      return res.status(404).json({ success: false, error: 'РџРѕР»СЊР·РѕРІР°С‚РµР»СЊ РЅРµ РЅР°Р№РґРµРЅ.' });
+
+    const user    = userResult.rows[0];
+    const isMatch = await bcrypt.compare(password, user.password_hash || user.password);
+    if (!isMatch)
+      return res.status(400).json({ success: false, error: 'РќРµРІРµСЂРЅС‹Р№ РїР°СЂРѕР»СЊ.' });
+
+    await pool.query('BEGIN');
+    await pool.query('DELETE FROM progress WHERE user_id = $1', [userId]);
+    await pool.query('DELETE FROM users WHERE id = $1', [userId]);
+    await pool.query('COMMIT');
+
+    console.log(`РІСљвЂ¦ User ID ${userId} deleted.`);
+    return res.json({ success: true });
+  } catch (err) {
+    await pool.query('ROLLBACK');
+    console.error('РІСњРЉ Delete account error:', err.message);
+    return res.status(500).json({ success: false, error: 'РћС€РёР±РєР° СЃРµСЂРІРµСЂР°.' });
+  }
+});
+
+// РІвЂќР‚РІвЂќР‚РІвЂќР‚ ADMIN РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚
+
+// Р ВР РЋР СџР В Р С’Р вЂ™Р вЂєР вЂўР СњР С›: Р Т‘Р С•Р В±Р В°Р Р†Р В»Р ВµР Р… Р В°Р В»Р С‘Р В°РЎРѓ /api/admin/stats (Р С”Р В»Р С‘Р ВµР Р…РЎвЂљ Р В·Р С•Р Р†РЎвЂРЎвЂљ Р ВµР С–Р С•, Р В° Р Р…Р Вµ /dashboard-stats)
+app.get('/api/admin/stats', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const usersCount   = await pool.query('SELECT COUNT(*) FROM users');
+    const coursesCount = await pool.query('SELECT COUNT(*) FROM courses');
+    const topicsCount  = await pool.query('SELECT COUNT(*) FROM topics');
+    res.json({
+      success: true,
+      stats: {
+        totalUsers:   parseInt(usersCount.rows[0].count),
+        totalCourses: parseInt(coursesCount.rows[0].count),
+        totalTopics:  parseInt(topicsCount.rows[0].count),
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: 'РћС€РёР±РєР° СЃРµСЂРІРµСЂР°.' });
+  }
+});
+
+// Р С’Р В»Р С‘Р В°РЎРѓ Р Т‘Р В»РЎРЏ Р С•Р В±РЎР‚Р В°РЎвЂљР Р…Р С•Р в„– РЎРѓР С•Р Р†Р СР ВµРЎРѓРЎвЂљР С‘Р СР С•РЎРѓРЎвЂљР С‘
+app.get('/api/admin/dashboard-stats', authMiddleware, adminMiddleware, async (req, res) => {
+  return res.redirect(307, '/api/admin/stats');
+});
+
+app.get('/api/admin/courses', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        co.id,
+        co.title,
+        co.description,
+        co.category_id,
+        co.icon_name,
+        co.color,
+        co.subject_key,
+        COALESCE(co.is_published, true) AS is_published,
+        COUNT(t.id)::int AS topic_count
+      FROM courses co
+      LEFT JOIN topics t ON t.course_id = co.id OR t.subject_key = co.subject_key
+      GROUP BY co.id, co.title, co.description, co.category_id, co.icon_name, co.color, co.subject_key, co.is_published
+      ORDER BY co.category_id ASC, co.id ASC
+    `);
+    res.json({ success: true, courses: result.rows });
+  } catch (err) {
+    console.error('РІСњРЉ Admin courses error:', err.message);
+    res.status(500).json({ success: false, error: 'РћС€РёР±РєР° СЃРµСЂРІРµСЂР°.' });
+  }
+});
+
+// Р ВР РЋР СџР В Р С’Р вЂ™Р вЂєР вЂўР СњР С›: Р Т‘Р С•Р В±Р В°Р Р†Р В»Р ВµР Р… GET /api/admin/users РІР‚вЂќ Р Р…РЎС“Р В¶Р ВµР Р… AdminPanel Р Т‘Р В»РЎРЏ РЎРѓР С—Р С‘РЎРѓР С”Р В° Р С—Р С•Р В»РЎРЉР В·Р С•Р Р†Р В°РЎвЂљР ВµР В»Р ВµР в„–
+app.get('/api/admin/users', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT id, username, email, role, balance, streak_count FROM users ORDER BY role DESC, username ASC'
+    );
+    res.json({ success: true, users: result.rows });
+  } catch (err) {
+    console.error('РІСњРЉ Admin users error:', err.message);
+    res.status(500).json({ success: false, error: 'РћС€РёР±РєР° СЃРµСЂРІРµСЂР°.' });
+  }
+});
+
+// Р ВР РЋР СџР В Р С’Р вЂ™Р вЂєР вЂўР СњР С›: Р Т‘Р С•Р В±Р В°Р Р†Р В»Р ВµР Р… GET /api/progress?username= РІР‚вЂќ Р Р…РЎС“Р В¶Р ВµР Р… AdminPanel Р Т‘Р В»РЎРЏ РЎРѓРЎвЂљР В°РЎвЂљР С‘РЎРѓРЎвЂљР С‘Р С”Р С‘ Р С—Р С•Р В»РЎРЉР В·Р С•Р Р†Р В°РЎвЂљР ВµР В»РЎРЏ
+app.get('/api/admin/user-progress', authMiddleware, adminMiddleware, async (req, res) => {
+  const { id, email, username } = req.query;
+  if (!id && !email && !username) return res.status(400).json({ success: false, error: 'РќРµС‚ РёРґРµРЅС‚РёС„РёРєР°С‚РѕСЂР° РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ.' });
+  try {
+    const userResult = id
+      ? await pool.query('SELECT id FROM users WHERE id = $1', [id])
+      : email
+        ? await pool.query('SELECT id FROM users WHERE LOWER(email) = LOWER($1)', [email])
+        : await pool.query('SELECT id FROM users WHERE username = $1 ORDER BY id ASC LIMIT 1', [username]);
+    if (userResult.rows.length === 0)
+      return res.status(404).json({ success: false, error: 'РџРѕР»СЊР·РѕРІР°С‚РµР»СЊ РЅРµ РЅР°Р№РґРµРЅ.' });
+
+    const userId = userResult.rows[0].id;
+    const result = await pool.query(`
+      SELECT
+        p.topic_id,
+        t.title AS topic_title,
+        t.subject_key,
+        c.title AS course_title
+      FROM progress p
+      LEFT JOIN topics t ON t.id = p.topic_id
+      LEFT JOIN courses c ON c.id = t.course_id OR c.subject_key = t.subject_key
+      WHERE p.user_id = $1
+      ORDER BY p.topic_id ASC
+    `, [userId]);
+    res.json({ success: true, progress: result.rows });
+  } catch (err) {
+    res.status(500).json({ success: false, error: 'РћС€РёР±РєР° СЃРµСЂРІРµСЂР°.' });
+  }
+});
+
+app.post('/api/admin/courses', authMiddleware, adminMiddleware, async (req, res) => {
+  const { title, description, category_id, icon_name, color, subject_key, is_published } = req.body;
+  const normalizedTitle = title?.trim() || '';
+  const normalizedDescription = description?.trim() || '';
+  const normalizedKey = (subject_key || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9_]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+  if (!title || title.trim().length < 3)
+    return res.status(400).json({ success: false, error: 'РќР°Р·РІР°РЅРёРµ СЃР»РёС€РєРѕРј РєРѕСЂРѕС‚РєРѕРµ.' });
+  if (normalizedDescription.length < 10)
+    return res.status(400).json({ success: false, error: 'Р”РѕР±Р°РІСЊС‚Рµ РѕРїРёСЃР°РЅРёРµ РєСѓСЂСЃР°.' });
+  if (normalizedKey.length < 3)
+    return res.status(400).json({ success: false, error: 'РљР»СЋС‡ РєСѓСЂСЃР° СЃР»РёС€РєРѕРј РєРѕСЂРѕС‚РєРёР№.' });
+  try {
+    const duplicate = await pool.query(
+      'SELECT id FROM courses WHERE LOWER(title) = LOWER($1) OR subject_key = $2 LIMIT 1',
+      [normalizedTitle, normalizedKey]
+    );
+    if (duplicate.rows.length > 0)
+      return res.status(400).json({ success: false, error: 'РљСѓСЂСЃ СЃ С‚Р°РєРёРј РЅР°Р·РІР°РЅРёРµРј РёР»Рё РєР»СЋС‡РѕРј СѓР¶Рµ РµСЃС‚СЊ.' });
+
+    const result = await pool.query(
+      'INSERT INTO courses (title, description, category_id, icon_name, color, subject_key, is_published) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
+      [normalizedTitle, normalizedDescription, category_id || 1, icon_name || 'book', color || '#4A90E2', normalizedKey, is_published === true]
+    );
+    console.log(`[РІСљвЂ¦ Course created] "${title}" by admin ID ${req.user.id}`);
+    res.status(201).json({ success: true, course: result.rows[0] });
+  } catch (err) {
+    console.error('РІСњРЉ Create course error:', err.message);
+    res.status(500).json({ success: false, error: 'РћС€РёР±РєР° СЃРµСЂРІРµСЂР°.' });
+  }
+});
+
+app.put('/api/admin/courses/:id', authMiddleware, adminMiddleware, async (req, res) => {
+  const courseId = req.params.id;
+  const { title, description, category_id, icon_name, color, subject_key, is_published } = req.body;
+  const normalizedTitle = title?.trim() || '';
+  const normalizedDescription = description?.trim() || '';
+  const normalizedKey = (subject_key || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9_]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+
+  if (normalizedTitle.length < 3)
+    return res.status(400).json({ success: false, error: 'РќР°Р·РІР°РЅРёРµ СЃР»РёС€РєРѕРј РєРѕСЂРѕС‚РєРѕРµ.' });
+  if (normalizedDescription.length < 10)
+    return res.status(400).json({ success: false, error: 'Р”РѕР±Р°РІСЊС‚Рµ РѕРїРёСЃР°РЅРёРµ РєСѓСЂСЃР°.' });
+  if (normalizedKey.length < 3)
+    return res.status(400).json({ success: false, error: 'РљР»СЋС‡ РєСѓСЂСЃР° СЃР»РёС€РєРѕРј РєРѕСЂРѕС‚РєРёР№.' });
+
+  try {
+    const duplicate = await pool.query(
+      'SELECT id FROM courses WHERE id <> $1 AND (LOWER(title) = LOWER($2) OR subject_key = $3) LIMIT 1',
+      [courseId, normalizedTitle, normalizedKey]
+    );
+    if (duplicate.rows.length > 0)
+      return res.status(400).json({ success: false, error: 'РљСѓСЂСЃ СЃ С‚Р°РєРёРј РЅР°Р·РІР°РЅРёРµРј РёР»Рё РєР»СЋС‡РѕРј СѓР¶Рµ РµСЃС‚СЊ.' });
+
+    await pool.query('BEGIN');
+    const oldCourse = await pool.query('SELECT subject_key FROM courses WHERE id = $1', [courseId]);
+    if (oldCourse.rows.length === 0) {
+      await pool.query('ROLLBACK');
+      return res.status(404).json({ success: false, error: 'РљСѓСЂСЃ РЅРµ РЅР°Р№РґРµРЅ.' });
+    }
+
+    const result = await pool.query(
+      `UPDATE courses
+       SET title = $1, description = $2, category_id = $3, icon_name = $4, color = $5, subject_key = $6, is_published = $7
+       WHERE id = $8
+       RETURNING *`,
+      [normalizedTitle, normalizedDescription, category_id || 1, icon_name || 'book', color || '#4A90E2', normalizedKey, is_published === true, courseId]
+    );
+
+    if (oldCourse.rows[0].subject_key !== normalizedKey) {
+      await pool.query('UPDATE topics SET subject_key = $1 WHERE subject_key = $2 OR course_id = $3', [normalizedKey, oldCourse.rows[0].subject_key, courseId]);
+    }
+
+    await pool.query('COMMIT');
+    res.json({ success: true, course: result.rows[0] });
+  } catch (err) {
+    await pool.query('ROLLBACK');
+    console.error('РІСњРЉ Update course error:', err.message);
+    res.status(500).json({ success: false, error: 'РћС€РёР±РєР° СЃРµСЂРІРµСЂР°.' });
+  }
+});
+
+app.patch('/api/admin/courses/:id/publish', authMiddleware, adminMiddleware, async (req, res) => {
+  const courseId = req.params.id;
+  const isPublished = req.body.is_published === true;
+  try {
+    const result = await pool.query(
+      'UPDATE courses SET is_published = $1 WHERE id = $2 RETURNING *',
+      [isPublished, courseId]
+    );
+    if (result.rows.length === 0)
+      return res.status(404).json({ success: false, error: 'РљСѓСЂСЃ РЅРµ РЅР°Р№РґРµРЅ.' });
+    res.json({ success: true, course: result.rows[0] });
+  } catch (err) {
+    console.error('РІСњРЉ Publish course error:', err.message);
+    res.status(500).json({ success: false, error: 'РћС€РёР±РєР° СЃРµСЂРІРµСЂР°.' });
+  }
+});
+
+app.delete('/api/admin/courses/:id', authMiddleware, adminMiddleware, async (req, res) => {
+  const courseId = req.params.id;
+  try {
+    await pool.query('BEGIN');
+    const courseResult = await pool.query('SELECT subject_key FROM courses WHERE id = $1', [courseId]);
+    if (courseResult.rows.length === 0) {
+      await pool.query('ROLLBACK');
+      return res.status(404).json({ success: false, error: 'РљСѓСЂСЃ РЅРµ РЅР°Р№РґРµРЅ.' });
+    }
+    await pool.query(
+      'DELETE FROM topics WHERE course_id = $1 OR subject_key = $2',
+      [courseId, courseResult.rows[0].subject_key]
+    );
+    const result = await pool.query('DELETE FROM courses WHERE id = $1 RETURNING id', [courseId]);
+    await pool.query('COMMIT');
+    console.log(`[РІСљвЂ¦ Course deleted] ID ${courseId}`);
+    res.json({ success: true, message: 'РљСѓСЂСЃ СѓРґР°Р»С‘РЅ.' });
+  } catch (err) {
+    await pool.query('ROLLBACK');
+    console.error('РІСњРЉ Delete course error:', err.message);
+    res.status(500).json({ success: false, error: 'РћС€РёР±РєР° СЃРµСЂРІРµСЂР°.' });
+  }
+});
+
+// РІвЂќР‚РІвЂќР‚РІвЂќР‚ Р вЂ”Р В°Р С—РЎС“РЎРѓР С” РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, '0.0.0.0', () => {
   console.log('-------------------------------------------');
-  console.log(`?? LearnWave Server started on port ${PORT}`);
-  console.log(`?? Local URL:   http://localhost:${PORT}`);
-  console.log(`?? Network URL: http://192.168.1.38:${PORT}`);
-  console.log('?? Security:   RBAC role model is active');
+  console.log(`СЂСџС™Р‚ LearnWave Server started on port ${PORT}`);
+  console.log(`СЂСџвЂќвЂ” Local:   http://localhost:${PORT}`);
+  console.log(`СЂСџвЂќвЂ” Network: check your IP in .env`);
+  console.log(`СЂСџвЂќвЂ™ Security: RBAC active`);
   console.log('-------------------------------------------');
 });
+
+
 

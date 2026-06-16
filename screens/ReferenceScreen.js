@@ -1,14 +1,21 @@
 import React, { useState, useEffect, useContext } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  StatusBar, ActivityIndicator, TextInput, ScrollView
+  StatusBar, ActivityIndicator, TextInput, ScrollView, Platform
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AuthContext } from '../context/AuthContext';
 import { getThemeColors } from '../styles/colors';
 import { db } from '../services/db';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import * as Haptics from 'expo-haptics';
+
+// ─── Haptics: безопасная обёртка (не падает на вебе) ─────────────────────────
+const haptic = {
+  impact: (style) => { if (Platform.OS !== 'web') { const H = require('expo-haptics'); H.impactAsync(style); } },
+  notification: (type) => { if (Platform.OS !== 'web') { const H = require('expo-haptics'); H.notificationAsync(type); } },
+};
+
+
 
 
 
@@ -60,7 +67,7 @@ const ReferenceScreen = ({ navigation }) => {
   );
 
   const handleTabPress = (tabKey) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    haptic.impact('medium');
     setActiveTab(tabKey);
   };
 

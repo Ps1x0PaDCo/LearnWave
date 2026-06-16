@@ -1,5 +1,6 @@
 export { default as LoginScreen } from './LoginScreen';
 export { default as RegisterScreen } from './RegisterScreen';
+export { default as PasswordResetScreen } from './PasswordResetScreen';
 export { default as HomeScreen } from './HomeScreen';
 export { default as CoursesScreen } from './CoursesScreen';
 export { default as SubjectSelectionScreen } from './SubjectSelectionScreen';

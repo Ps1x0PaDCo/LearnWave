@@ -1,6 +1,5 @@
 import React, { useContext } from 'react';
 import { StatusBar, ActivityIndicator, View, StyleSheet } from 'react-native';
-import { registerRootComponent } from 'expo';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator, CardStyleInterpolators } from '@react-navigation/stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -12,6 +11,7 @@ import { AuthProvider, AuthContext } from './context/AuthContext';
 import {
   LoginScreen,
   RegisterScreen,
+  PasswordResetScreen,
   HomeScreen,
   CoursesScreen,
   SubjectSelectionScreen,
@@ -27,14 +27,12 @@ import {
   ShopScreen,
 } from './screens';
 
-// LogBox.ignoreLogs(['?? Сюда можно вписать конкретное варнинг-сообщение, которое нужно скрыть']);
-
 const Stack = createStackNavigator();
 
 const RootNavigation = () => {
   const { isLoggedIn, isLoading } = useContext(AuthContext);
 
-  // Исправлено: Вместо белого экрана показываем индикатор загрузки, пока проверяется сессия
+  // Индикатор загрузки вместо белого экрана, пока проверяется сессия
   if (isLoading) {
     return (
       <View style={styles.center}>
@@ -54,10 +52,10 @@ const RootNavigation = () => {
         <>
           <Stack.Screen name="Login" component={LoginScreen} />
           <Stack.Screen name="Register" component={RegisterScreen} />
+          <Stack.Screen name="PasswordReset" component={PasswordResetScreen} />
         </>
       ) : (
         <>
-          {/* Унифицированы названия роутов (убраны лишние суффиксы Screen) */}
           <Stack.Screen name="Home" component={HomeScreen} />
           <Stack.Screen name="Courses" component={CoursesScreen} />
           <Stack.Screen name="SubjectSelection" component={SubjectSelectionScreen} />
@@ -97,5 +95,6 @@ const styles = StyleSheet.create({
   },
 });
 
-registerRootComponent(App);
+// ИСПРАВЛЕНО: registerRootComponent убран отсюда — он уже вызывается в index.js.
+// Двойной вызов мог приводить к непредсказуемому поведению при запуске.
 export default App;

@@ -1,14 +1,12 @@
-import React, { useContext, useMemo } from 'react';
+﻿import React, { useContext, useMemo, useState } from 'react';
 import { 
   View, Text, StyleSheet, ScrollView, TouchableOpacity, 
-  StatusBar, Platform, Dimensions 
+  StatusBar, Platform 
 } from 'react-native';
 import { AuthContext, CoursesContext } from '../context/AuthContext';
 import { getThemeColors } from '../styles/colors';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeAreaView } from 'react-native-safe-area-context';
-
-const { width } = Dimensions.get('window');
 
 const AchievementsScreen = ({ navigation }) => {
   const { isDarkMode, streak, balance, user } = useContext(AuthContext);
@@ -265,8 +263,8 @@ const AchievementsScreen = ({ navigation }) => {
       desc: 'Станьте частью команды LearnWave',
       icon: 'heart',
       target: 1,
-      current: 1,
-      unlocked: true,
+      current: user?.role === 'admin' ? 1 : 0,
+      unlocked: user?.role === 'admin',
       color: '#2ECC71'
     },
     {
@@ -285,8 +283,8 @@ const AchievementsScreen = ({ navigation }) => {
       desc: 'Пройдите тему во время ночного штурма науки',
       icon: 'moon',
       target: 1,
-      current: currentLectures >= 2 ? 1 : 0, // Условие условной активности
-      unlocked: currentLectures >= 2,
+      current: 0,
+      unlocked: false,
       color: '#9C88FF'
     },
     {
@@ -295,8 +293,8 @@ const AchievementsScreen = ({ navigation }) => {
       desc: 'Наберите баланс без единой ошибки за сессию',
       icon: 'checkmark-circle',
       target: 1,
-      current: currentLectures >= 4 ? 1 : 0,
-      unlocked: currentLectures >= 4,
+      current: 0,
+      unlocked: false,
       color: '#4CD137'
     },
     {
@@ -305,8 +303,8 @@ const AchievementsScreen = ({ navigation }) => {
       desc: 'Откройте скрытые возможности базы данных',
       icon: 'code-working',
       target: 1,
-      current: currentXP >= 600 ? 1 : 0,
-      unlocked: currentXP >= 600,
+      current: 0,
+      unlocked: false,
       color: '#487EB0'
     },
     {
@@ -315,8 +313,8 @@ const AchievementsScreen = ({ navigation }) => {
       desc: 'Имейте одновременно 4 дня стрика и 3 лекции',
       icon: 'flash',
       target: 1,
-      current: (currentStreak >= 4 && currentLectures >= 3) ? 1 : 0,
-      unlocked: currentStreak >= 4 && currentLectures >= 3,
+      current: 0,
+      unlocked: false,
       color: '#F5CD79'
     },
     {
@@ -325,14 +323,29 @@ const AchievementsScreen = ({ navigation }) => {
       desc: 'Разблокируйте более 15 любых достижений',
       icon: 'crown',
       target: 15,
-      current: 0, // Посчитается динамически ниже при рендере, ставим заглушку
-      unlocked: currentLectures >= 8 || currentStreak >= 6 || currentXP >= 1500,
+      current: 0,
+      unlocked: false,
       color: '#ED4C67'
     }
   ], [currentLectures, currentStreak, currentXP, user]);
 
   const unlockedCount = achievements.filter(a => a.unlocked).length;
   const totalProgress = (unlockedCount / achievements.length) * 100;
+  const categories = [
+    { key: 'all', title: 'Все', icon: 'apps-outline', range: [1, 30] },
+    { key: 'learn', title: 'Учёба', icon: 'book-outline', range: [1, 8] },
+    { key: 'streak', title: 'Серия', icon: 'flame-outline', range: [9, 15] },
+    { key: 'xp', title: 'XP', icon: 'star-outline', range: [16, 23] },
+    { key: 'special', title: 'Особые', icon: 'sparkles-outline', range: [24, 30] },
+  ];
+  const [activeCategory, setActiveCategory] = useState('all');
+  const selectedCategory = categories.find(item => item.key === activeCategory) || categories[0];
+  const filteredAchievements = activeCategory === 'all'
+    ? achievements
+    : achievements.filter(item => item.id >= selectedCategory.range[0] && item.id <= selectedCategory.range[1]);
+  const nextAchievement = achievements
+    .filter(item => !item.unlocked)
+    .sort((a, b) => (a.target - a.current) - (b.target - b.current))[0];
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
@@ -361,10 +374,51 @@ const AchievementsScreen = ({ navigation }) => {
           <View style={styles.circularBox}>
              <Text style={styles.percentText}>{Math.round(totalProgress)}%</Text>
           </View>
+        </View>
+
+        {nextAchievement && (
+          <View style={[styles.nextCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={[styles.nextIconBox, { backgroundColor: nextAchievement.color + '15' }]}>
+              <Ionicons name={nextAchievement.icon} size={24} color={nextAchievement.color} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.nextLabel, { color: colors.textMuted }]}>Ближайшая цель</Text>
+              <Text style={[styles.nextTitle, { color: colors.textPrimary }]} numberOfLines={1}>
+                {nextAchievement.title}
+              </Text>
+              <Text style={[styles.nextDesc, { color: colors.textMuted }]} numberOfLines={2}>
+                Осталось: {Math.max(nextAchievement.target - nextAchievement.current, 0)}
+              </Text>
+            </View>
           </View>
-          {/* Декоративный элемент фона */}
+        )}
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryRow}>
+          {categories.map(category => {
+            const isActive = activeCategory === category.key;
+            return (
+              <TouchableOpacity
+                key={category.key}
+                style={[
+                  styles.categoryChip,
+                  {
+                    backgroundColor: isActive ? colors.primary : colors.surface,
+                    borderColor: isActive ? colors.primary : colors.border,
+                  }
+                ]}
+                onPress={() => setActiveCategory(category.key)}
+                activeOpacity={0.8}
+              >
+                <Ionicons name={category.icon} size={15} color={isActive ? '#FFF' : colors.primary} />
+                <Text style={[styles.categoryText, { color: isActive ? '#FFF' : colors.textPrimary }]}>
+                  {category.title}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
         <View style={styles.listContainer}>
-          {achievements.map((item) => (
+          {filteredAchievements.map((item) => (
             <View
               key={item.id}
               style={[
@@ -478,6 +532,14 @@ const styles = StyleSheet.create({
   },
   percentText: { color: '#FFF', fontWeight: 'bold', fontSize: 18 },
   bgIcon: { position: 'absolute', right: -10, bottom: -20 },
+  nextCard: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 24, borderWidth: 1, marginBottom: 16, elevation: 2 },
+  nextIconBox: { width: 54, height: 54, borderRadius: 18, justifyContent: 'center', alignItems: 'center', marginRight: 14 },
+  nextLabel: { fontSize: 10, fontWeight: '900', letterSpacing: 1, marginBottom: 3, textTransform: 'uppercase' },
+  nextTitle: { fontSize: 16, fontWeight: '900' },
+  nextDesc: { fontSize: 12, fontWeight: '600', marginTop: 3 },
+  categoryRow: { gap: 10, paddingBottom: 16 },
+  categoryChip: { height: 38, borderRadius: 14, borderWidth: 1, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  categoryText: { fontSize: 12, fontWeight: '900' },
   listContainer: { gap: 15 },
   itemCard: {
     flexDirection: 'row',
@@ -519,3 +581,4 @@ const styles = StyleSheet.create({
 });
 
 export default AchievementsScreen;
+

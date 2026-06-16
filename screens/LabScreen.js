@@ -1,19 +1,23 @@
 import React, { useState, useContext, useMemo } from 'react';
 import { 
   View, Text, StyleSheet, TouchableOpacity, ScrollView, 
-  Dimensions, StatusBar, Platform, LayoutAnimation 
+  useWindowDimensions, StatusBar, Platform, LayoutAnimation 
 } from 'react-native';
 import { AuthContext } from '../context/AuthContext';
 import { getThemeColors } from '../styles/colors';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import Svg, { Line, Path, Circle, G, Text as SvgText } from 'react-native-svg';
-import * as Haptics from 'expo-haptics';
 
-const { width } = Dimensions.get('window');
-const GRID_SIZE = width - 40;
-const STEP = GRID_SIZE / 10; 
+// ─── Haptics: безопасная обёртка (не падает на вебе) ─────────────────────────
+const haptic = {
+  impact: (style) => { if (Platform.OS !== 'web') { const H = require('expo-haptics'); H.impactAsync(style); } },
+  notification: (type) => { if (Platform.OS !== 'web') { const H = require('expo-haptics'); H.notificationAsync(type); } },
+};
 
 const LabScreen = ({ navigation }) => {
+  const { width } = useWindowDimensions();
+  const GRID_SIZE = width - 40;
+  const STEP = GRID_SIZE / 10;
   const { isDarkMode } = useContext(AuthContext);
   const colors = getThemeColors(isDarkMode);
 
@@ -91,13 +95,13 @@ const LabScreen = ({ navigation }) => {
 
   // Функции управления
   const adjust = (param, val) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    haptic.impact('medium');
     const setter = param === 'a' ? setA : param === 'b' ? setB : setC;
     setter(prev => Math.round((prev + val) * 100) / 100);
   };
 
   const saveToGhost = () => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    haptic.notification('medium');
     setGhost({ a, b, c, type });
   };
 

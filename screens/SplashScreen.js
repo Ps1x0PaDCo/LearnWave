@@ -1,13 +1,14 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Animated, StatusBar } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
 const SplashScreen = ({ onFinish }) => {
-  const fadeAnim = new Animated.Value(0);
-  const scaleAnim = new Animated.Value(0.8);
+  // РРЎРџР РђР’Р›Р•РќРћ: useRef РІРјРµСЃС‚Рѕ new Animated.Value() РЅР°РїСЂСЏРјСѓСЋ вЂ”
+  // Р±РµР· useRef РѕР±СЉРµРєС‚ РїРµСЂРµСЃРѕР·РґР°РІР°Р»СЃСЏ РїСЂРё РєР°Р¶РґРѕРј СЂРµРЅРґРµСЂРµ
+  const fadeAnim  = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.8)).current;
 
   useEffect(() => {
-    // Анимация: появление и увеличение
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
@@ -18,10 +19,9 @@ const SplashScreen = ({ onFinish }) => {
         toValue: 1,
         friction: 4,
         useNativeDriver: true,
-      })
+      }),
     ]).start();
 
-    // Через 2.5 секунды завершаем показ
     const timer = setTimeout(() => {
       onFinish();
     }, 2500);
@@ -32,16 +32,16 @@ const SplashScreen = ({ onFinish }) => {
   return (
     <View style={styles.container}>
       <StatusBar hidden />
-      <Animated.View style={{ 
-        opacity: fadeAnim, 
+      <Animated.View style={{
+        opacity: fadeAnim,
         transform: [{ scale: scaleAnim }],
-        alignItems: 'center' 
+        alignItems: 'center',
       }}>
         <View style={styles.logoCircle}>
           <Ionicons name="school" size={60} color="#FFF" />
         </View>
         <Text style={styles.title}>LearnWave</Text>
-        <Text style={styles.subtitle}>Твой океан знаний</Text>
+        <Text style={styles.subtitle}>РўРІРѕСЏ РІРѕР»РЅР° Р·РЅР°РЅРёР№</Text>
       </Animated.View>
     </View>
   );
@@ -51,7 +51,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#4A90E2', justifyContent: 'center', alignItems: 'center' },
   logoCircle: { width: 120, height: 120, borderRadius: 60, backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
   title: { fontSize: 36, fontWeight: 'bold', color: '#FFF', letterSpacing: 2 },
-  subtitle: { fontSize: 16, color: 'rgba(255,255,255,0.8)', marginTop: 10, fontWeight: '500' }
+  subtitle: { fontSize: 16, color: 'rgba(255,255,255,0.8)', marginTop: 10, fontWeight: '500' },
 });
 
 export default SplashScreen;

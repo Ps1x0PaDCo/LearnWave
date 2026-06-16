@@ -1,17 +1,21 @@
-import React, { useContext, useEffect, useState, useRef } from 'react';
+﻿import React, { useContext, useEffect, useState, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Alert,
-  ScrollView, Dimensions, StatusBar, Platform, ActivityIndicator, Modal, TextInput, Animated, Easing
+  ScrollView, StatusBar, Platform, ActivityIndicator, Modal, TextInput, Animated, Easing
 } from 'react-native';
 import { AuthContext } from '../context/AuthContext';
 import { getThemeColors } from '../styles/colors';
 import { dbService } from '../services/database';
+import apiClient from '../services/api';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as Haptics from 'expo-haptics';
 
+// ─── Haptics: безопасная обёртка (не падает на вебе) ─────────────────────────
+const haptic = {
+  impact: (style) => { if (Platform.OS !== 'web') { const H = require('expo-haptics'); H.impactAsync(style); } },
+  notification: (type) => { if (Platform.OS !== 'web') { const H = require('expo-haptics'); H.notificationAsync(type); } },
+};
 
-const { width } = Dimensions.get('window');
 
 const AVATAR_DATA = {
   //  Старые талисманы
@@ -27,6 +31,42 @@ const AVATAR_DATA = {
   '🦫': { label: 'Бобёр-архитектор', desc: 'Методичное и надежное проектирование баз данных.' },
   '🦅': { label: 'Орлиный взор', desc: 'Филигранный поиск багов и уязвимостей в исходном коде.' },
   '🤖': { label: 'Сингулярность', desc: 'Полное слияние разума с искусственным интеллектом.' }
+};
+
+const BORDER_OPTIONS = [
+  { id: 'none', label: 'Без рамки', color: '#8A99A6', owned: true, animated: false },
+  { id: 'bronze', label: 'Бронзовое свечение', color: '#CD7F32', animated: false },
+  { id: 'gold', label: 'Магистр золота', color: '#FFD700', animated: false },
+  { id: 'platinum', label: 'Платиновый контур', color: '#E5E4E2', animated: false },
+  { id: 'neon', label: 'Пульсирующий неон', color: '#FF0055', animated: true },
+  { id: 'matrix', label: 'Матричный код', color: '#00FF41', animated: true },
+  { id: 'sapphire', label: 'Сапфировая рамка', color: '#2F80ED', animated: true },
+  { id: 'emerald', label: 'Изумрудная рамка', color: '#10B981', animated: true },
+  { id: 'sunset', label: 'Закатный градиент', color: '#FF7A45', animated: true },
+];
+
+const STATIC_BORDER_COLORS = {
+  bronze: '#CD7F32',
+  gold: '#FFD700',
+  platinum: '#E5E4E2',
+};
+
+const BORDER_LABELS = {
+  none: 'Без рамки',
+  bronze: 'Бронза',
+  gold: 'Золото',
+  platinum: 'Платина',
+  neon: 'Неон',
+  matrix: 'Матрица',
+  sapphire: 'Сапфир',
+  emerald: 'Изумруд',
+  sunset: 'Закат',
+};
+
+const PULSE_BORDER_COLORS = {
+  sapphire: ['#2F80ED', '#56CCF2'],
+  emerald: ['#10B981', '#6EE7B7'],
+  sunset: ['#FF7A45', '#9B59B6'],
 };
 
 
@@ -52,43 +92,101 @@ const ProfileScreen = ({ navigation }) => {
   // 💡 Состояния для новых модалок кастомизации
   const [avatarModalVisible, setAvatarModalVisible] = useState(false);
   const [borderModalVisible, setBorderModalVisible] = useState(false);
+  const [ownedBorders, setOwnedBorders] = useState({ none: true });
 
   // 🌟 ЖЕСТКАЯ ФИКСАЦИЯ АНИМАЦИЙ В ПАМЯТИ (ИВТ-ОПТИМИЗАЦИЯ СВЯЗЕЙ)
   const neonAnim = useRef(new Animated.Value(0.4)).current;
   const matrixScroll = useRef(new Animated.Value(0)).current;
+  const borderPulse = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    // 1. Бесконечный цикл неона
-    Animated.loop(
+    if (activeBorder !== 'neon') return undefined;
+
+    neonAnim.setValue(0.4);
+    const animation = Animated.loop(
       Animated.sequence([
         Animated.timing(neonAnim, { toValue: 1, duration: 1200, useNativeDriver: false }),
         Animated.timing(neonAnim, { toValue: 0.4, duration: 1200, useNativeDriver: false })
       ])
-    ).start();
+    );
+    animation.start();
 
-    // 2. 🟢 БЕСКОНЕЧНЫЙ ЛИНЕЙНЫЙ ВОДОПАД МАТРИЦЫ (БЕЗ ЗАДЕРЖЕК И РЫВКОВ)
-    Animated.loop(
+    return () => animation.stop();
+  }, [activeBorder, neonAnim]);
+
+  useEffect(() => {
+    if (activeBorder !== 'matrix') return undefined;
+
+    matrixScroll.setValue(0);
+    const animation = Animated.loop(
       Animated.timing(matrixScroll, {
         toValue: 1,
-        duration: 1500, // Скорость бега цифр (можно сделать 1500, если нужно побыстрее)
-        easing: Easing.linear, // 🌟 УБИРАЕТ ЗАДЕРЖКУ: Скорость движения становится идеально равномерной!
+        duration: 1500,
+        easing: Easing.linear,
         useNativeDriver: true,
       })
-    ).start();
+    );
+    animation.start();
 
-  }, [neonAnim, matrixScroll, activeBorder]);
+    return () => animation.stop();
+  }, [activeBorder, matrixScroll]);
+
+  useEffect(() => {
+    if (!PULSE_BORDER_COLORS[activeBorder]) return undefined;
+
+    borderPulse.setValue(0);
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(borderPulse, { toValue: 1, duration: 1300, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(borderPulse, { toValue: 0, duration: 1300, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      ])
+    );
+    animation.start();
+
+    return () => animation.stop();
+  }, [activeBorder, borderPulse]);
 
 
 
   useEffect(() => {
     const loadSavedBorder = async () => {
       if (nickname) {
-        const savedBorder = await AsyncStorage.getItem(`border_${nickname}`);
-        if (savedBorder) setActiveBorder(savedBorder);
+        const ownerKey = user?.id || user?.email || nickname;
+        const savedBorder = await AsyncStorage.getItem(`border_${ownerKey}`);
+        setActiveBorder(savedBorder || 'none');
+
+        let serverOwned = {};
+        try {
+          const inventoryRes = await apiClient.get('/shop/inventory');
+          if (Array.isArray(inventoryRes?.data?.items)) {
+            inventoryRes.data.items
+              .filter(item => item.item_type === 'frame')
+              .forEach(item => {
+                const borderId = String(item.item_value || '').replace('_frame', '');
+                if (borderId) serverOwned[borderId] = true;
+              });
+          }
+        } catch {}
+
+        const ownedPairs = await Promise.all(
+          BORDER_OPTIONS
+            .filter(item => item.id !== 'none')
+            .map(async item => [item.id, await AsyncStorage.getItem(`border_owned_${ownerKey}_${item.id}`)])
+        );
+        const localOwned = Object.fromEntries(
+          ownedPairs
+            .filter(([, value]) => value === 'true')
+            .map(([id]) => [id, true])
+        );
+        setOwnedBorders({
+          none: true,
+          ...localOwned,
+          ...serverOwned,
+        });
       }
     };
     loadSavedBorder();
-  }, [nickname]);
+  }, [nickname, user?.id, user?.email, borderModalVisible]);
 
   // Состояния для модалки редактирования
   const [editModalVisible, setEditModalVisible] = useState(false);
@@ -139,7 +237,7 @@ const ProfileScreen = ({ navigation }) => {
         const result = await dbService.updateNickname(nickname, trimmedName);
         if (result.success) {
           updateUserName(trimmedName);
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          haptic.notification('medium');
           setEditModalVisible(false);
         } else {
           Alert.alert("Ошибка", result.error);
@@ -167,7 +265,7 @@ const ProfileScreen = ({ navigation }) => {
       const result = await deleteUserAccount(passwordToSend);
 
       if (result && result.success) {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        haptic.notification('medium');
         setDeleteModalVisible(false);
         setConfirmPassword('');
         Alert.alert("Успех", "Ваш аккаунт и все связанные данные были безвозвратно удалены.");
@@ -183,9 +281,57 @@ const ProfileScreen = ({ navigation }) => {
 
 
   const changeAvatar = async (emoji) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    haptic.impact('medium');
     setSelectedAvatar(emoji);
     await AsyncStorage.setItem(`avatar_${nickname}`, emoji);
+  };
+
+  const renderBorderOption = (border) => {
+    const isOwned = border.owned || ownedBorders[border.id] === true;
+    const isActive = activeBorder === border.id;
+
+    return (
+      <TouchableOpacity
+        key={border.id}
+        onPress={async () => {
+          haptic.impact('medium');
+
+          if (!isOwned) {
+            haptic.notification('medium');
+            Alert.alert('Доступ заблокирован 🔒', 'Эту рамку необходимо сначала приобрести в магазине WaveShop!');
+            return;
+          }
+
+          setActiveBorder(border.id);
+          if (nickname) await AsyncStorage.setItem(`border_${user?.id || user?.email || nickname}`, border.id);
+          setBorderModalVisible(false);
+        }}
+        style={[
+          styles.borderOption,
+          {
+            backgroundColor: isActive ? colors.primary + '10' : colors.background,
+            borderColor: isActive ? colors.primary : colors.border,
+            opacity: isOwned ? 1 : 0.55,
+          }
+        ]}
+      >
+        <View style={[styles.borderColorDot, { borderColor: border.color }]} />
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.borderOptionTitle, { color: colors.textPrimary }]}>{border.label}</Text>
+          <Text style={[styles.borderOptionType, { color: colors.textMuted }]}>
+            {border.animated ? 'Анимированная рамка' : 'Обычная рамка'}
+          </Text>
+        </View>
+
+        {isActive ? (
+          <Ionicons name="checkmark-circle" size={18} color={colors.primary} />
+        ) : !isOwned ? (
+          <Ionicons name="lock-closed-outline" size={14} color={colors.textMuted} />
+        ) : (
+          <Ionicons name="ellipse-outline" size={14} color={colors.textMuted} />
+        )}
+      </TouchableOpacity>
+    );
   };
 
 
@@ -210,7 +356,7 @@ const ProfileScreen = ({ navigation }) => {
           <TouchableOpacity
             activeOpacity={0.9}
             onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              haptic.impact('medium');
               setAvatarModalVisible(true); // Открываем модалку талисманов по тапу на сову
             }}
             style={{ width: 140, height: 140, justifyContent: 'center', alignItems: 'center', marginBottom: 15, alignSelf: 'center' }}
@@ -305,6 +451,37 @@ const ProfileScreen = ({ navigation }) => {
                 </View>
               </>
             )}
+            {PULSE_BORDER_COLORS[activeBorder] && (
+              <>
+                <Animated.View style={{
+                  position: 'absolute',
+                  width: 124,
+                  height: 124,
+                  borderRadius: 62,
+                  borderWidth: 4,
+                  borderColor: PULSE_BORDER_COLORS[activeBorder][0],
+                  opacity: borderPulse.interpolate({ inputRange: [0, 1], outputRange: [0.45, 0.95] }),
+                  transform: [{ scale: borderPulse.interpolate({ inputRange: [0, 1], outputRange: [0.98, 1.08] }) }],
+                  shadowColor: PULSE_BORDER_COLORS[activeBorder][0],
+                  shadowOffset: { width: 0, height: 0 },
+                  shadowOpacity: 0.9,
+                  shadowRadius: 12,
+                  elevation: 10,
+                  zIndex: 1,
+                }} />
+                <Animated.View style={{
+                  position: 'absolute',
+                  width: 112,
+                  height: 112,
+                  borderRadius: 56,
+                  borderWidth: 3,
+                  borderColor: PULSE_BORDER_COLORS[activeBorder][1],
+                  opacity: borderPulse.interpolate({ inputRange: [0, 1], outputRange: [0.95, 0.55] }),
+                  transform: [{ scale: borderPulse.interpolate({ inputRange: [0, 1], outputRange: [1.02, 0.98] }) }],
+                  zIndex: 4,
+                }} />
+              </>
+            )}
             {/* 💡 СЛОЙ 2: НЕПРОЗРАЧНЫЙ СТАТИЧНЫЙ АВАТАР (Перекрывает центр) */}
             <View style={{
               position: 'absolute',
@@ -322,14 +499,14 @@ const ProfileScreen = ({ navigation }) => {
             </View>
 
             {/* СТАТИЧНЫЕ МАТЕРИАЛЬНЫЕ РАМКИ (Бронза, Золото, ... ) */}
-            {(activeBorder === 'bronze' || activeBorder === 'gold' || activeBorder === 'platinum') && (
+            {STATIC_BORDER_COLORS[activeBorder] && (
               <View style={{
                 position: 'absolute',
                 width: 120,
                 height: 120,
                 borderRadius: 60,
                 borderWidth: 4,
-                borderColor: activeBorder === 'bronze' ? '#CD7F32' : activeBorder === 'gold' ? '#FFD700' : '#E5E4E2',
+                borderColor: STATIC_BORDER_COLORS[activeBorder],
                 backgroundColor: 'transparent',
                 zIndex: 4, // Поверх всего
               }} />
@@ -390,47 +567,39 @@ const ProfileScreen = ({ navigation }) => {
           </View>
           {/* === КОНЕЦ ВСТАВКИ ПРОГРЕСС-БАРА === */}
 
-          {/* === 🎛️ КОМПАКТНАЯ ПАНЕЛЬ КАСТОМИЗАЦИИ (Dropdown-стиль) === */}
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, marginTop: 15, width: '100%' }}>
-
-            {/* Кнопка смены аватара / талисмана */}
+          <View style={styles.customizeRow}>
             <TouchableOpacity
-              style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.background, paddingVertical: 14, paddingHorizontal: 16, borderRadius: 16, borderWidth: 1, borderColor: colors.border }}
-              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setAvatarModalVisible(true); }}
+              style={[styles.customizeButton, { backgroundColor: colors.background, borderColor: colors.border }]}
+              onPress={() => { haptic.impact('medium'); setAvatarModalVisible(true); }}
             >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <View style={styles.customizeButtonLeft}>
                 <Text style={{ fontSize: 16 }}>{selectedAvatar}</Text>
-                <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textPrimary }}>Аватар</Text>
+                <Text style={[styles.customizeButtonText, { color: colors.textPrimary }]} numberOfLines={1}>Аватар</Text>
               </View>
-              <Ionicons name="chevron-down" size={14} color={colors.textMuted} />
+              <View style={styles.customizeChevron}>
+                <Ionicons name="chevron-down" size={14} color={colors.textMuted} />
+              </View>
             </TouchableOpacity>
 
-            {/* Кнопка смены рамки */}
             <TouchableOpacity
-              style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.background, paddingVertical: 14, paddingHorizontal: 16, borderRadius: 16, borderWidth: 1, borderColor: colors.border }}
-              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setBorderModalVisible(true); }}
+              style={[styles.customizeButton, { backgroundColor: colors.background, borderColor: colors.border }]}
+              onPress={() => { haptic.impact('medium'); setBorderModalVisible(true); }}
             >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                {/* Вместо вылезающего кружка ставим красивую контурную иконку палитры/кастомизации */}
+              <View style={styles.customizeButtonLeft}>
                 <Ionicons
                   name="color-palette-outline"
                   size={16}
-                  color={activeBorder === 'none' ? colors.textMuted : activeBorder === 'bronze' ? '#CD7F32' : activeBorder === 'gold' ? '#FFD700' : '#FF0055'}
+                  color={BORDER_OPTIONS.find(item => item.id === activeBorder)?.color || colors.textMuted}
                 />
-                <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textPrimary }}>
-                  {/* 💡 Динамически пишем название абсолютно любой выбранной рамки! */}
-                  {activeBorder === 'none' ? 'Без рамки' :
-                    activeBorder === 'bronze' ? 'Бронза' :
-                      activeBorder === 'gold' ? 'Золото' :
-                        activeBorder === 'platinum' ? 'Платина' : 'Матрица'}
+                <Text style={[styles.customizeButtonText, { color: colors.textPrimary }]} numberOfLines={1}>
+                  {BORDER_LABELS[activeBorder] || 'Без рамки'}
                 </Text>
-
               </View>
-              <Ionicons name="chevron-down" size={14} color={colors.textMuted} />
+              <View style={styles.customizeChevron}>
+                <Ionicons name="chevron-down" size={14} color={colors.textMuted} />
+              </View>
             </TouchableOpacity>
-
           </View>
-
           <Text style={[styles.avatarDesc, { color: colors.textMuted }]}>{AVATAR_DATA[selectedAvatar]?.desc}</Text>
 
           <View style={[styles.quickStats, { borderTopColor: colors.border }]}>
@@ -446,11 +615,43 @@ const ProfileScreen = ({ navigation }) => {
           </View>
         </View>
 
+        <View style={styles.profileSummaryGrid}>
+          <View style={[styles.profileSummaryCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={[styles.summaryIconBox, { backgroundColor: colors.primary + '15' }]}>
+              <Ionicons name="trending-up-outline" size={20} color={colors.primary} />
+            </View>
+            <Text style={[styles.summaryValue, { color: colors.textPrimary }]}>{level}</Text>
+            <Text style={[styles.summaryLabel, { color: colors.textMuted }]}>Уровень</Text>
+          </View>
+          <View style={[styles.profileSummaryCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={[styles.summaryIconBox, { backgroundColor: '#F1C40F15' }]}>
+              <Ionicons name="star-outline" size={20} color="#F1C40F" />
+            </View>
+            <Text style={[styles.summaryValue, { color: colors.textPrimary }]}>{user?.balance || 0}</Text>
+            <Text style={[styles.summaryLabel, { color: colors.textMuted }]}>XP / монеты</Text>
+          </View>
+          <View style={[styles.profileSummaryCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={[styles.summaryIconBox, { backgroundColor: colors.success + '15' }]}>
+              <Ionicons name="checkmark-circle-outline" size={20} color={colors.success} />
+            </View>
+            <Text style={[styles.summaryValue, { color: colors.textPrimary }]}>{stats.completed.length}</Text>
+            <Text style={[styles.summaryLabel, { color: colors.textMuted }]}>Тем</Text>
+          </View>
+        </View>
+
         <TouchableOpacity
           style={[styles.achBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
           onPress={() => navigation.navigate('Achievements')}
         >
-          <Text style={[styles.achBtnText, { color: colors.textPrimary }]}>Посмотреть все достижения</Text>
+          <View style={styles.achBtnLeft}>
+            <View style={[styles.achIconBox, { backgroundColor: '#F1C40F15' }]}>
+              <Ionicons name="trophy-outline" size={22} color="#F1C40F" />
+            </View>
+            <View>
+              <Text style={[styles.achBtnText, { color: colors.textPrimary }]}>Достижения</Text>
+              <Text style={[styles.achBtnSub, { color: colors.textMuted }]}>Награды, серии и учебные цели</Text>
+            </View>
+          </View>
           <Ionicons name="chevron-forward" size={20} color={colors.primary} />
         </TouchableOpacity>
 
@@ -592,65 +793,17 @@ const ProfileScreen = ({ navigation }) => {
 <View style={styles.modalOverlay}>
 <View style={[styles.modalBox, { backgroundColor: colors.surface }]}>
 <Text style={[styles.modalT, { color: colors.textPrimary }]}>Выберите рамку</Text>
-<View style={{ gap: 10, marginVertical: 15 }}>
-{[
-  { id: 'none', label: 'Без рамки', color: colors.textMuted },
-  { id: 'bronze', label: 'Бронзовое свечение', color: '#CD7F32' },
-  { id: 'gold', label: 'Магистр золота', color: '#FFD700' },
-  { id: 'neon', label: 'Пульсирующий неон', color: '#FF0055' },
-  { id: 'matrix', label: 'Матричный код', color: '#00FF41' }
-].map(b => (
-  <TouchableOpacity
-    key={b.id}
-    onPress={async () => {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      
-      // 🌟 ЗАЩИТА LEARNWAVE: Проверяем, куплен ли данный скин в WaveShop
-      const isOwned = await AsyncStorage.getItem(`border_owned_${nickname}_${b.id}`);
-      
-      if (b.id !== 'none' && isOwned !== 'true') {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        Alert.alert('Доступ заблокирован 🔒', 'Эту рамку необходимо сначала приобрести в магазине WaveShop!');
-        return;
-      }
+<ScrollView style={styles.borderModalScroll} showsVerticalScrollIndicator>
+  <Text style={[styles.borderSectionTitle, { color: colors.textMuted }]}>ОБЫЧНЫЕ</Text>
+  <View style={styles.borderOptionsGroup}>
+    {BORDER_OPTIONS.filter(item => !item.animated).map(renderBorderOption)}
+  </View>
 
-      setActiveBorder(b.id);
-      if (nickname) await AsyncStorage.setItem(`border_${nickname}`, b.id);
-      setBorderModalVisible(false);
-      // Внутри ShopScreen.js при успешной покупке frame:
-if (item.type === 'frame' && user?.username) {
-  const borderId = item.id.replace('frame_', ''); // 'bronze', 'gold', 'neon'
-  await AsyncStorage.setItem(`border_${user.username}`, borderId);
-  
-  // 🌟 ДОБАВЛЯЕМ ПРАВО ВЛАДЕНИЯ: Флаг true для профиля!
-  await AsyncStorage.setItem(`border_owned_${user.username}_${borderId}`, 'true');
-}
-
-    }}
-    style={{ 
-      flexDirection: 'row', 
-      alignItems: 'center', 
-      padding: 14, 
-      borderRadius: 16, 
-      borderWidth: 1, 
-      backgroundColor: activeBorder === b.id ? colors.primary + '10' : colors.background, 
-      borderColor: activeBorder === b.id ? colors.primary : colors.border, 
-      gap: 12,
-      opacity: b.id !== 'none' ? 1 : 0.9 // Визуальный индикатор
-    }}
-  >
-    <View style={{ width: 16, height: 16, borderRadius: 8, borderWidth: 3, borderColor: b.color }} />
-    <Text style={{ fontSize: 14, fontWeight: '600', color: colors.textPrimary, flex: 1 }}>{b.label}</Text>
-    
-    {/* Иконка замочка, если рамка еще не куплена */}
-    {b.id !== 'none' && (() => {
-      // Быстрая оффлайн-проверка для вывода иконки замка
-      // (Для моментальной отрисовки используем стейты или флаги, но проверка на клике — 100% защита)
-      return <Ionicons name="lock-closed-outline" size={14} color={colors.textMuted} />;
-    })()}
-  </TouchableOpacity>
-))}
-</View>
+  <Text style={[styles.borderSectionTitle, { color: colors.textMuted, marginTop: 14 }]}>АНИМИРОВАННЫЕ</Text>
+  <View style={styles.borderOptionsGroup}>
+    {BORDER_OPTIONS.filter(item => item.animated).map(renderBorderOption)}
+  </View>
+</ScrollView>
 <TouchableOpacity style={{ marginTop: 5, alignItems: 'center' }} onPress={() => setBorderModalVisible(false)}>
 <Text style={{ color: colors.textMuted, fontWeight: 'bold' }}>Закрыть</Text>
 </TouchableOpacity>
@@ -673,23 +826,43 @@ const styles = StyleSheet.create({
   nameRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6, gap: 10 },
   userName: { fontSize: 26, fontWeight: 'bold' },
   editBtn: { padding: 5 },
+  customizeRow: { flexDirection: 'row', gap: 10, marginTop: 15, width: '100%' },
+  customizeButton: { flex: 1, minWidth: 0, height: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingLeft: 13, paddingRight: 8, borderRadius: 16, borderWidth: 1 },
+  customizeButtonLeft: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 8, paddingRight: 4 },
+  customizeButtonText: { flex: 1, minWidth: 0, fontSize: 13, fontWeight: '800' },
+  customizeChevron: { width: 22, height: 22, borderRadius: 11, justifyContent: 'center', alignItems: 'center' },
   avatarDesc: { fontSize: 13, textAlign: 'center', fontStyle: 'italic', marginBottom: 20 },
   quickStats: { flexDirection: 'row', width: '100%', borderTopWidth: 1, paddingTop: 20 },
   statMini: { flex: 1, alignItems: 'center' },
   statNum: { fontSize: 20, fontWeight: 'bold' },
   statLabel: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', marginTop: 2 },
   dividerVertical: { width: 1, height: '100%' },
-  achBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20, borderRadius: 24, borderWidth: 1, marginBottom: 30, elevation: 2 },
-  achBtnText: { fontWeight: 'bold' },
+  profileSummaryGrid: { flexDirection: 'row', gap: 10, marginBottom: 14 },
+  profileSummaryCard: { flex: 1, borderWidth: 1, borderRadius: 22, padding: 14, alignItems: 'center', elevation: 2 },
+  summaryIconBox: { width: 38, height: 38, borderRadius: 13, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
+  summaryValue: { fontSize: 18, fontWeight: '900' },
+  summaryLabel: { fontSize: 10, fontWeight: '800', marginTop: 3, textAlign: 'center' },
+  achBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 18, borderRadius: 24, borderWidth: 1, marginBottom: 30, elevation: 2 },
+  achBtnLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  achIconBox: { width: 46, height: 46, borderRadius: 15, justifyContent: 'center', alignItems: 'center', marginRight: 14 },
+  achBtnText: { fontWeight: '900', fontSize: 16 },
+  achBtnSub: { fontSize: 12, fontWeight: '600', marginTop: 2 },
   sectionTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 16 },
   logoutBtn: { height: 60, borderRadius: 20, borderWidth: 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, elevation: 2 },
   logoutText: { color: '#FF5E5E', fontWeight: 'bold', fontSize: 16 },
 
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: 25 },
-  modalBox: { padding: 30, borderRadius: 32, elevation: 10, borderWidth: 1, borderColor: 'transparent' },
+  modalBox: { padding: 30, borderRadius: 32, elevation: 10, borderWidth: 1, borderColor: 'transparent', maxHeight: '88%' },
   modalT: { fontSize: 22, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
   mInput: { height: 60, borderWidth: 1.5, borderRadius: 18, paddingHorizontal: 15, marginBottom: 20, fontSize: 16 },
   modalActions: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 25, paddingRight: 5 },
+  borderModalScroll: { maxHeight: 430, marginBottom: 14 },
+  borderOptionsGroup: { gap: 10 },
+  borderSectionTitle: { fontSize: 11, fontWeight: '900', letterSpacing: 1.6, marginBottom: 10 },
+  borderOption: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, borderWidth: 1, gap: 12 },
+  borderColorDot: { width: 16, height: 16, borderRadius: 8, borderWidth: 3 },
+  borderOptionTitle: { fontSize: 14, fontWeight: '800' },
+  borderOptionType: { fontSize: 11, fontWeight: '600', marginTop: 2 },
 
   // === СТИЛИ ПЛАШКИ ПОЧТЫ ===
   emailBadge: {
