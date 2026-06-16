@@ -24,11 +24,11 @@ export const AuthProvider = ({ children }) => {
   const [unlockedAward, setUnlockedAward]   = useState(null);
   const scaleAnim = useRef(new Animated.Value(0)).current;
 
-  const checkAchievementTriggers = useCallback((lecturesCount, currentStreak, currentXP) => {
-    if (lecturesCount === 1)      return { title: 'Первый шаг',   icon: 'water',  color: '#4A90E2' };
-    if (lecturesCount === 5)      return { title: 'Пять лекций',  icon: 'medal',  color: '#9B59B6' };
-    if (currentStreak === 3)      return { title: 'Серия x3',     icon: 'flame',  color: '#FF5E5E' };
-    if (currentXP >= 500)         return { title: 'Богач',        icon: 'trophy', color: '#F1C40F' };
+  const checkAchievementTriggers = useCallback((previousLectures, lecturesCount, previousStreak, currentStreak, previousXP, currentXP) => {
+    if (previousLectures < 1 && lecturesCount >= 1) return { title: 'Первая волна', icon: 'water', color: '#4A90E2' };
+    if (previousLectures < 5 && lecturesCount >= 5) return { title: 'Магистр знаний', icon: 'medal', color: '#9B59B6' };
+    if (previousStreak < 3 && currentStreak >= 3) return { title: 'В ударе', icon: 'flame', color: '#FF5E5E' };
+    if (previousXP < 500 && currentXP >= 500) return { title: 'Золотой запас', icon: 'trophy', color: '#F1C40F' };
     return null;
   }, []);
 
@@ -300,6 +300,33 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const updateUserName = async (newUsername) => {
+    const trimmedName = String(newUsername || '').trim();
+    if (trimmedName.length < 3) return { success: false, error: 'Имя должно быть не короче 3 символов.' };
+    try {
+      const response = await profileService.updateName(trimmedName);
+      if (response.data?.success && response.data.user) {
+        const updatedUser = response.data.user;
+        setUser(updatedUser);
+        await AsyncStorage.setItem('current_user', updatedUser.username);
+        if (Platform.OS !== 'web') {
+          try {
+            db.runSync('UPDATE users SET username = ? WHERE email = ? OR server_id = ? OR id = ?;', [
+              updatedUser.username,
+              updatedUser.email,
+              updatedUser.id,
+              updatedUser.id,
+            ]);
+          } catch {}
+        }
+        return { success: true, user: updatedUser };
+      }
+      return { success: false, error: 'Не удалось обновить имя.' };
+    } catch (error) {
+      return { success: false, error: error.response?.data?.error || 'Не удалось обновить имя.' };
+    }
+  };
+
   // в”Ђв”Ђв”Ђ РџРѕРєСѓРїРєР° СЂР°РјРєРё РїСЂРѕС„РёР»СЏ в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
   const buyInterfaceBorder = async (borderId, cost) => {
     if (!user) return { success: false, error: 'Пользователь не найден.' };
@@ -371,8 +398,9 @@ export const AuthProvider = ({ children }) => {
     setCompletedCourses(prev => {
       const currentList = Array.isArray(prev) ? prev : [];
       const updated = [...new Set([...currentList, finalKey])];
-      const currentXP = (user?.balance || 0) + 50;
-      const award = checkAchievementTriggers(updated.length, streak, currentXP);
+      const previousXP = user?.balance || 0;
+      const currentXP = previousXP + 50;
+      const award = checkAchievementTriggers(currentList.length, updated.length, streak || 0, streak || 0, previousXP, currentXP);
       if (award) triggerAchievementPopUp(award);
       return updated;
     });
@@ -385,6 +413,7 @@ export const AuthProvider = ({ children }) => {
       userRole: user?.role,
       calculateLevel,
       login, register, logout, deleteUserAccount, buyInterfaceBorder,
+      updateUserName,
       completedCourses, setCompletedCourses,
       activeBorder, setActiveBorder,
       setUser,

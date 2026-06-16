@@ -133,7 +133,7 @@ const TopicSelectionScreen = ({ route, navigation }) => {
             </View>
             <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>Темы готовятся</Text>
             <Text style={[styles.emptyText, { color: colors.textMuted }]}>
-              Этот курс уже есть в каталоге. Материалы появятся здесь после наполнения через административную панель.
+              Материалы появятся позже. Следите за курсом, чтобы пройти новые темы первым.
             </Text>
           </View>
         ) : (

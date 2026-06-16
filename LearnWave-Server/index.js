@@ -48,6 +48,19 @@ pool.connect((err) => {
   if (err) console.error('вќЊ PostgreSQL connection error:', err.stack);
   else {
     console.log('вњ… PostgreSQL connected');
+    pool.query(`
+      CREATE TABLE IF NOT EXISTS categories (
+        id INTEGER PRIMARY KEY,
+        title VARCHAR(255) NOT NULL,
+        color VARCHAR(50)
+      );
+      INSERT INTO categories (id, title, color)
+      VALUES (6, 'Прочие', '#64748B')
+      ON CONFLICT (id) DO UPDATE
+      SET title = EXCLUDED.title, color = EXCLUDED.color;
+    `).catch(e => console.error('Category misc seed error:', e.message));
+    pool.query('ALTER TABLE users DROP CONSTRAINT IF EXISTS users_username_key;')
+      .catch(e => console.error('Username uniqueness migration error:', e.message));
     pool.query('ALTER TABLE courses ADD COLUMN IF NOT EXISTS is_published BOOLEAN DEFAULT true;')
       .catch(e => console.error('вќЊ Course publish column error:', e.message));
     pool.query(`
@@ -78,7 +91,9 @@ pool.connect((err) => {
       INSERT INTO user_inventory (user_id, item_type, item_value, quantity)
       SELECT user_id, 'quiz_hint', 'hint_5050', total_quantity
       FROM hint_totals
-      WHERE total_quantity > 0;
+      WHERE total_quantity > 0
+      ON CONFLICT (user_id, item_type, item_value)
+      DO UPDATE SET quantity = user_inventory.quantity + EXCLUDED.quantity;
     `).catch(e => console.error('Inventory hint migration error:', e.message));
     pool.query(`
       CREATE UNIQUE INDEX IF NOT EXISTS user_inventory_unique_item
@@ -255,6 +270,26 @@ app.get('/api/profile', authMiddleware, async (req, res) => {
   } catch (err) {
     console.error('вќЊ Profile error:', err.message);
     return res.status(500).json({ success: false, error: 'Ошибка сервера.' });
+  }
+});
+
+app.patch('/api/profile/name', authMiddleware, async (req, res) => {
+  const username = String(req.body?.username || '').trim();
+  if (username.length < 3) {
+    return res.status(400).json({ success: false, error: 'Имя должно быть не короче 3 символов.' });
+  }
+  try {
+    const result = await pool.query(
+      'UPDATE users SET username = $1 WHERE id = $2 RETURNING id, username, email, role, balance, streak_count',
+      [username, req.user.id]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Пользователь не найден.' });
+    }
+    return res.json({ success: true, user: result.rows[0] });
+  } catch (err) {
+    console.error('Update profile name error:', err.message);
+    return res.status(500).json({ success: false, error: 'Не удалось обновить имя.' });
   }
 });
 

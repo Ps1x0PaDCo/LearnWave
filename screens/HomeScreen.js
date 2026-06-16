@@ -47,6 +47,7 @@ const HomeScreen = ({ navigation }) => {
   const [quote] = useState(QUOTES[Math.floor(Math.random() * QUOTES.length)]);
   const [timer, setTimer] = useState(1500); // 25 минут
   const [active, setActive] = useState(false);
+  const [courseSearch, setCourseSearch] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [pomodoroInfoVisible, setPomodoroInfoVisible] = useState(false);
 
@@ -100,6 +101,7 @@ const HomeScreen = ({ navigation }) => {
       interval = setInterval(() => setTimer(s => s - 1), 1000);
     } else if (timer === 0) {
       setActive(false);
+      setTimer(1500);
       haptic.notification('Success');
     } else {
       clearInterval(interval);
@@ -118,6 +120,7 @@ const HomeScreen = ({ navigation }) => {
         // Профиль обновится через AuthContext при следующем рендере
       }
       await fetchRank();
+      await fetchInventorySummary();
     } catch (err) {
       console.log('⚠️ [HomeScreen] Refresh error:', err.message);
     } finally {
@@ -173,8 +176,17 @@ const HomeScreen = ({ navigation }) => {
           <TextInput
             placeholder="Поиск курсов..."
             placeholderTextColor={colors.textMuted}
+            value={courseSearch}
+            onChangeText={setCourseSearch}
+            returnKeyType="search"
+            onSubmitEditing={() => navigation.navigate('Courses', { initialSearch: courseSearch.trim() })}
             style={{ flex: 1, marginLeft: 10, color: colors.textPrimary }}
           />
+          {courseSearch.trim().length > 0 && (
+            <TouchableOpacity onPress={() => navigation.navigate('Courses', { initialSearch: courseSearch.trim() })}>
+              <Ionicons name="arrow-forward-circle" size={22} color={colors.primary} />
+            </TouchableOpacity>
+          )}
         </View>
 
         <View style={[styles.planCard, { backgroundColor: colors.primary }]}>

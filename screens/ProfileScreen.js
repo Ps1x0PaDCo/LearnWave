@@ -72,7 +72,7 @@ const PULSE_BORDER_COLORS = {
 
 const ProfileScreen = ({ navigation }) => {
   const {
-    nickname, isDarkMode, toggleTheme, logout, updateUserName,
+    nickname, isDarkMode, toggleTheme, logout, updateUserName, streak,
     getCompletedTopics, getAchievements, user,
     deleteUserAccount, calculateLevel, activeBorder,
     setActiveBorder, buyInterfaceBorder, completedCourses,
@@ -203,17 +203,22 @@ const ProfileScreen = ({ navigation }) => {
         setTempNickname(nickname);
 
         try {
-          // 2. Считываем количество уникальных полученных наград из локальной SQLite таблицы
-          const { db } = require('../services/db'); // Безопасный вызов СУБД
-          const awardsResult = db.getAllSync(
-            "SELECT id FROM user_progress WHERE username = ? AND status = 'completed'", 
-            [nickname]
-          );
+          const lecturesCount = (completedCourses || []).length;
+          const xp = user?.balance || 0;
+          const streakCount = streak || 0;
+          let awardsCount = 0;
+          [1, 5, 10, 15, 20, 25, 30, 40].forEach(target => { if (lecturesCount >= target) awardsCount += 1; });
+          [3, 5, 7, 14, 30, 50, 100].forEach(target => { if (streakCount >= target) awardsCount += 1; });
+          [500, 1000, 2000, 3500, 5000, 7500, 10000, 15000].forEach(target => { if (xp >= target) awardsCount += 1; });
+          if (user?.role === 'admin') awardsCount += 1;
+          if (user) awardsCount += 1;
+          if (lecturesCount >= 3 && streakCount >= 4) awardsCount += 1;
+          if (awardsCount >= 15) awardsCount += 1;
           
           setStats({ 
             // Пройденные лекции берем прямо из живого массива контекста (гарантия автообновления!)
             completed: completedCourses || [], 
-            awards: awardsResult || [] 
+            awards: Array.from({ length: awardsCount }, (_, id) => ({ id }))
           });
         } catch (sqliteErr) {
           console.log('⚠️ Ошибка подсчета оффлайн-наград в профиле:', sqliteErr.message);
@@ -223,7 +228,7 @@ const ProfileScreen = ({ navigation }) => {
     };
     
     refreshData();
-  }, [nickname, completedCourses]); // Добавили completedCourses в зависимости, чтобы цифры менялись на лету!
+  }, [nickname, completedCourses, streak, user?.balance, user?.role]); // Добавили completedCourses в зависимости, чтобы цифры менялись на лету!
 
   const saveNewNickname = async () => {
     const trimmedName = tempNickname.trim();
@@ -234,9 +239,11 @@ const ProfileScreen = ({ navigation }) => {
       }
       setLoading(true);
       try {
-        const result = await dbService.updateNickname(nickname, trimmedName);
+        const result = await updateUserName(trimmedName);
         if (result.success) {
-          updateUserName(trimmedName);
+          if (Platform.OS !== 'web') {
+            await dbService.updateNickname(nickname, trimmedName);
+          }
           haptic.notification('medium');
           setEditModalVisible(false);
         } else {

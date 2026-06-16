@@ -247,7 +247,10 @@ const QuizScreen = ({ route, navigation }) => {
   }
 
   const renderLectureContent = () => {
-    const parts = lectureContent.replace(/\\n/g, '\n').split(/(\[FORMULA\][\s\S]*?\[\/FORMULA\])/g);
+    const normalizedLecture = lectureContent
+      .replace(/\\n/g, '\n')
+      .replace(/^(#{1,6})(\S)/gm, '$1 $2');
+    const parts = normalizedLecture.split(/(\[FORMULA\][\s\S]*?\[\/FORMULA\])/g);
 
     return parts
       .filter(part => part && part.trim().length > 0)

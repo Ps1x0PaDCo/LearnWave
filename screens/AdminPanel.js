@@ -44,6 +44,7 @@ const CATEGORY_OPTIONS = [
   { id: 3, title: 'IT и программирование', icon: 'code-slash', color: '#9B59B6' },
   { id: 4, title: 'Гуманитарные науки', icon: 'library', color: '#F39C12' },
   { id: 5, title: 'Языки', icon: 'language', color: '#1ABC9C' },
+  { id: 6, title: 'Прочие', icon: 'albums', color: '#64748B' },
 ];
 
 const CATEGORY_BY_KEY = {
@@ -110,9 +111,23 @@ const FORMAT_GUIDES = {
       'Хорошо работает структура: правило, пример, перевод, ошибка, совет.',
     ],
   },
+  6: {
+    title: 'Прочие',
+    short: '### Идея • ### Пример • ### Проверка понимания • ### Важный совет',
+    placeholder: '### Короткая теория\n\nОбъясните тему простыми словами и без лишней формальности.\n\n### Пример\n\nПокажите короткий пример, который помогает понять смысл.\n\n### Проверка понимания\n\nСформулируйте, что пользователь должен запомнить.\n\n### Важный совет\n\nСделайте совет нейтральным и полезным.',
+    details: [
+      'Раздел подходит для нестандартных, демонстрационных и экспериментальных курсов.',
+      'Формулы использовать необязательно: структура зависит от темы.',
+      'Лучше держать материал коротким, понятным и с одним проверочным вопросом.',
+    ],
+  },
 };
 
 const getFormatGuide = (categoryId) => FORMAT_GUIDES[categoryId] || FORMAT_GUIDES[4];
+
+const normalizeMarkdownContent = (value = '') => String(value)
+  .replace(/\\n/g, '\n')
+  .replace(/^(#{1,6})(\S)/gm, '$1 $2');
 
 const AdminPanel = ({ navigation }) => {
   const { isDarkMode } = useContext(AuthContext);
@@ -676,7 +691,8 @@ const AdminPanel = ({ navigation }) => {
       Alert.alert('Ошибка', 'Выберите тему.');
       return;
     }
-    if (editTopicTitle.trim().length < 3 || editTopicContent.trim().length < 20) {
+    const normalizedContent = normalizeMarkdownContent(editTopicContent.trim());
+    if (editTopicTitle.trim().length < 3 || normalizedContent.length < 20) {
       Alert.alert('Проверьте данные', 'Название и материал темы должны быть заполнены.');
       return;
     }
@@ -703,14 +719,43 @@ const AdminPanel = ({ navigation }) => {
 
     setIsTopicUpdating(true);
     try {
-      await adminService.updateTopic(topicToEdit.id, {
+      const response = await adminService.updateTopic(topicToEdit.id, {
         title: editTopicTitle.trim(),
         description: editTopicDescription.trim(),
-        content: editTopicContent.trim(),
+        content: normalizedContent,
         quiz_question: quizPayload,
         quiz_answer: editTopicAnswer.trim(),
         difficulty: topicToEdit.difficulty || 1,
       });
+      const savedTopic = response?.data?.topic || {
+        ...topicToEdit,
+        title: editTopicTitle.trim(),
+        description: editTopicDescription.trim(),
+        content: normalizedContent,
+        quiz_question: quizPayload,
+        quiz_answer: editTopicAnswer.trim(),
+        difficulty: topicToEdit.difficulty || 1,
+      };
+      try {
+        db.runSync(
+          `INSERT OR REPLACE INTO topics
+            (id, server_id, subject_key, title, description, content, quiz_question, quiz_answer, difficulty, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+          [
+            savedTopic.id || topicToEdit.id,
+            savedTopic.server_id || savedTopic.id || topicToEdit.server_id || topicToEdit.id,
+            savedTopic.subject_key || topicToEdit.subject_key,
+            savedTopic.title || editTopicTitle.trim(),
+            savedTopic.description || editTopicDescription.trim(),
+            savedTopic.content || normalizedContent,
+            savedTopic.quiz_question || quizPayload,
+            savedTopic.quiz_answer || editTopicAnswer.trim(),
+            savedTopic.difficulty || topicToEdit.difficulty || 1,
+          ]
+        );
+      } catch (localErr) {
+        console.log('Topic local update fallback:', localErr?.message);
+      }
       haptic.notification('Success');
       resetEditTopicModal();
       fetchData();
@@ -2208,11 +2253,11 @@ const styles = StyleSheet.create({
   quizOptionBadgeText: { color: '#FFF', fontSize: 13, fontWeight: '900' },
   quizOptionInput: { flex: 1, minHeight: 48, borderWidth: 1.5, borderRadius: 16, paddingHorizontal: 12, fontSize: 14 },
   quizExplanationArea: { minHeight: 92, paddingTop: 12, textAlignVertical: 'top' },
-  modalActions: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 14, marginTop: 14, paddingTop: 12, paddingHorizontal: 4, paddingBottom: 2, borderTopWidth: 1, borderTopColor: 'transparent' },
-  deleteTopicBtn: { minHeight: 44, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 14, borderWidth: 1.5, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginRight: 'auto' },
+  modalActions: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginTop: 14, paddingTop: 12, paddingHorizontal: 0, paddingBottom: 2, borderTopWidth: 1, borderTopColor: 'transparent' },
+  deleteTopicBtn: { minHeight: 44, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 14, borderWidth: 1.5, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
   deleteTopicBtnText: { color: '#FF5E5E', fontWeight: '900', fontSize: 13 },
   cancelBtn: { minHeight: 44, paddingHorizontal: 8, justifyContent: 'center', alignItems: 'center' },
-  saveBtn: { minHeight: 44, minWidth: 104, paddingHorizontal: 22, paddingVertical: 11, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
+  saveBtn: { minHeight: 44, minWidth: 108, paddingHorizontal: 18, paddingVertical: 11, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
   // Stepper
   stepperContainer: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginBottom: 24 },
   stepWrapper: { flexDirection: 'row', alignItems: 'center' },

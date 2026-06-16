@@ -1,7 +1,7 @@
 import React, { useContext, useState, useEffect } from 'react';
 import { 
   View, Text, StyleSheet, ScrollView, Platform, TouchableOpacity, 
-  StatusBar, ActivityIndicator 
+  StatusBar, ActivityIndicator, TextInput
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AuthContext } from '../context/AuthContext';
@@ -48,12 +48,19 @@ const getCourseState = (topicCount) => {
   };
 };
 
-const CoursesScreen = ({ navigation }) => {
+const CoursesScreen = ({ route, navigation }) => {
   const { isDarkMode, completedCourses } = useContext(AuthContext);
   const colors = getThemeColors(isDarkMode);
   
   const [loading, setLoading] = useState(true);
   const [catalog, setCatalog] = useState([]); // Сюда прилетят категории из БД
+  const [searchQuery, setSearchQuery] = useState(route?.params?.initialSearch || '');
+
+  useEffect(() => {
+    if (route?.params?.initialSearch !== undefined) {
+      setSearchQuery(route.params.initialSearch);
+    }
+  }, [route?.params?.initialSearch]);
 
   useEffect(() => {
     const loadAllData = async () => {
@@ -105,6 +112,19 @@ const CoursesScreen = ({ navigation }) => {
     });
   };
 
+  const filteredCatalog = catalog
+    .map(category => ({
+      ...category,
+      subjects: (category.subjects || []).filter(subject => {
+        const query = searchQuery.trim().toLowerCase();
+        if (!query) return true;
+        return `${subject.title || ''} ${subject.description || ''} ${category.title || ''}`
+          .toLowerCase()
+          .includes(query);
+      }),
+    }))
+    .filter(category => (category.subjects || []).length > 0);
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
       <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
@@ -132,8 +152,29 @@ const CoursesScreen = ({ navigation }) => {
             Выберите интересующее вас направление для начала обучения
           </Text>
 
+          <View style={[styles.searchBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Ionicons name="search-outline" size={18} color={colors.textMuted} />
+            <TextInput
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Найти курс..."
+              placeholderTextColor={colors.textMuted}
+              style={[styles.searchInput, { color: colors.textPrimary }]}
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => setSearchQuery('')}>
+                <Ionicons name="close-circle" size={18} color={colors.textMuted} />
+              </TouchableOpacity>
+            )}
+          </View>
+
           {/* --- ПОЛНОСТЬЮ ДИНАМИЧЕСКИЙ ВЫВОД ИЗ БАЗЫ ДАННЫХ --- */}
-          {catalog.map((category) => (
+          {filteredCatalog.length === 0 ? (
+            <View style={[styles.emptySearchBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <Ionicons name="search-outline" size={30} color={colors.textMuted} />
+              <Text style={[styles.emptySearchText, { color: colors.textMuted }]}>Курс не найден</Text>
+            </View>
+          ) : filteredCatalog.map((category) => (
             <View key={category.id} style={styles.section}>
               {/* Заголовок категории (берется из PostgreSQL) */}
               <View style={styles.sectionHeader}>
@@ -181,7 +222,14 @@ const CoursesScreen = ({ navigation }) => {
                     </View>
                     <View style={styles.subjectInfo}>
                       <View style={styles.subjectTopLine}>
-                        <Text style={[styles.subjectName, { color: colors.textPrimary }]} numberOfLines={1}>{sub.title}</Text>
+                        <Text
+                          style={[styles.subjectName, { color: colors.textPrimary }]}
+                          numberOfLines={1}
+                          adjustsFontSizeToFit
+                          minimumFontScale={0.82}
+                        >
+                          {sub.title}
+                        </Text>
                         <View style={[
                           styles.statusPill,
                           {
@@ -199,7 +247,7 @@ const CoursesScreen = ({ navigation }) => {
                         {sub.description || 'Доступно для обучения'}
                       </Text>
                       <View style={styles.courseFooter}>
-                        <Text style={[styles.courseCount, { color: colors.textMuted }]}>
+                        <Text style={[styles.courseCount, { color: colors.textMuted }]} numberOfLines={1}>
                           {courseState.meta}
                         </Text>
                         {isReady && (
@@ -236,6 +284,10 @@ const styles = StyleSheet.create({
   backBtn: { width: 45, height: 45, borderRadius: 15, justifyContent: 'center', alignItems: 'center', borderWidth: 1, elevation: 2 },
   content: { paddingHorizontal: 20, paddingBottom: 40 },
   mainDesc: { fontSize: 14, marginBottom: 25, lineHeight: 20, opacity: 0.8 },
+  searchBox: { height: 50, borderRadius: 16, borderWidth: 1, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, marginBottom: 20 },
+  searchInput: { flex: 1, marginLeft: 10, fontSize: 14, fontWeight: '700' },
+  emptySearchBox: { borderWidth: 1, borderRadius: 22, padding: 28, alignItems: 'center', justifyContent: 'center' },
+  emptySearchText: { marginTop: 10, fontSize: 14, fontWeight: '800' },
   section: { marginBottom: 30 },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 15, marginLeft: 5 },
   dot: { width: 8, height: 8, borderRadius: 4, marginRight: 10 },
@@ -248,8 +300,8 @@ const styles = StyleSheet.create({
   subjectMeta: { fontSize: 12, fontWeight: '500', opacity: 0.7, lineHeight: 16 },
   statusPill: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 },
   statusText: { fontSize: 10, fontWeight: '900' },
-  courseFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 },
-  courseCount: { fontSize: 11, fontWeight: '800' },
+  courseFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, gap: 8 },
+  courseCount: { flexShrink: 1, fontSize: 11, fontWeight: '800' },
   courseTrack: { height: 5, borderRadius: 3, overflow: 'hidden', marginTop: 7 },
   courseFill: { height: '100%', borderRadius: 3 },
   arrowBox: { width: 34, height: 34, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },

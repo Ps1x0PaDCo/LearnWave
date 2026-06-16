@@ -17,6 +17,7 @@ const categories = [
   { id: 3, title: 'IT и программирование', color: '#9B59B6' },
   { id: 4, title: 'Гуманитарные науки', color: '#F39C12' },
   { id: 5, title: 'Языки', color: '#E74C3C' },
+  { id: 6, title: 'Прочие', color: '#64748B' },
 ];
 
 const contentData = [

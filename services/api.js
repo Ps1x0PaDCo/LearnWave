@@ -106,6 +106,7 @@ export const adminService = {
 
 export const profileService = {
   deleteAccount: (password) => apiClient.post('/user-delete-account', { password }),
+  updateName: (username) => apiClient.patch('/profile/name', { username }),
 };
 
 // tokenStorage экспортируем для использования в AuthContext

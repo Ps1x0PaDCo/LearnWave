@@ -19,7 +19,8 @@ const AchievementsScreen = ({ navigation }) => {
   const currentStreak = streak || 0;
 
   // --- ДИНАМИЧЕСКИЙ СПИСОК ИЗ 30 ДОСТИЖЕНИЙ ---
-  const achievements = useMemo(() => [
+  const achievements = useMemo(() => {
+    const baseAchievements = [
     // === КАТЕГОРИЯ: ЛЕКЦИИ И ОБУЧЕНИЕ (1-8) ===
     {
       id: 1,
@@ -327,7 +328,13 @@ const AchievementsScreen = ({ navigation }) => {
       unlocked: false,
       color: '#ED4C67'
     }
-  ], [currentLectures, currentStreak, currentXP, user]);
+  ];
+    const unlockedWithoutLegend = baseAchievements.filter(item => item.id !== 30 && item.unlocked).length;
+    return baseAchievements.map(item => item.id === 30
+      ? { ...item, current: unlockedWithoutLegend, unlocked: unlockedWithoutLegend >= 15 }
+      : item
+    );
+  }, [currentLectures, currentStreak, currentXP, user]);
 
   const unlockedCount = achievements.filter(a => a.unlocked).length;
   const totalProgress = (unlockedCount / achievements.length) * 100;
