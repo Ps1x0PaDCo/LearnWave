@@ -123,7 +123,7 @@ const RegisterScreen = ({ navigation }) => {
             <View style={[styles.inputContainer, { backgroundColor: colors.surface, borderColor: getBorderColor(email, isEmailValid) }]}>
               <Ionicons name="mail-outline" size={20} color={colors.primary} style={styles.icon} />
               <TextInput
-                placeholder="example@mail.com"
+                placeholder="Email адрес"
                 placeholderTextColor={colors.textMuted}
                 value={email}
                 onChangeText={setEmail}

@@ -1,8 +1,9 @@
-import axios from 'axios';
+﻿import axios from 'axios';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Constants from 'expo-constants';
 
-// ─── Хранилище токена: SecureStore на нативе, AsyncStorage на вебе ─────────
+// в”Ђв”Ђв”Ђ РҐСЂР°РЅРёР»РёС‰Рµ С‚РѕРєРµРЅР°: SecureStore РЅР° РЅР°С‚РёРІРµ, AsyncStorage РЅР° РІРµР±Рµ в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 const tokenStorage = {
   get: async (key) => {
     if (Platform.OS === 'web') return AsyncStorage.getItem(key);
@@ -21,33 +22,35 @@ const tokenStorage = {
   },
 };
 
-// ─── Событие принудительного логаута: DeviceEventEmitter на нативе ─────────
+// в”Ђв”Ђв”Ђ РЎРѕР±С‹С‚РёРµ РїСЂРёРЅСѓРґРёС‚РµР»СЊРЅРѕРіРѕ Р»РѕРіР°СѓС‚Р°: DeviceEventEmitter РЅР° РЅР°С‚РёРІРµ в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 const emitForceLogout = () => {
   if (Platform.OS !== 'web') {
     const { DeviceEventEmitter } = require('react-native');
     DeviceEventEmitter.emit('FORCE_LOGOUT');
   } else {
-    // На вебе используем кастомное событие браузера
+    // РќР° РІРµР±Рµ РёСЃРїРѕР»СЊР·СѓРµРј РєР°СЃС‚РѕРјРЅРѕРµ СЃРѕР±С‹С‚РёРµ Р±СЂР°СѓР·РµСЂР°
     window.dispatchEvent(new Event('FORCE_LOGOUT'));
   }
 };
 
-// ─── Базовый URL из переменной окружения ──────────────────────────────────
-// В файле .env (корень проекта) пропиши:
-//   EXPO_PUBLIC_API_URL=https://твой-сервер.railway.app
-// Для локальной разработки:
+// в”Ђв”Ђв”Ђ Р‘Р°Р·РѕРІС‹Р№ URL РёР· РїРµСЂРµРјРµРЅРЅРѕР№ РѕРєСЂСѓР¶РµРЅРёСЏ в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+// Р’ С„Р°Р№Р»Рµ .env (РєРѕСЂРµРЅСЊ РїСЂРѕРµРєС‚Р°) РїСЂРѕРїРёС€Рё:
+//   EXPO_PUBLIC_API_URL=https://С‚РІРѕР№-СЃРµСЂРІРµСЂ.railway.app
+// Р”Р»СЏ Р»РѕРєР°Р»СЊРЅРѕР№ СЂР°Р·СЂР°Р±РѕС‚РєРё:
 //   EXPO_PUBLIC_API_URL=http://localhost:5000
-const BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:5000';
+const BASE_URL = Constants.expoConfig?.extra?.apiUrl || process.env.EXPO_PUBLIC_API_URL || 'http://localhost:5000';
+
+export const API_BASE_URL = BASE_URL;
 
 const apiClient = axios.create({
   baseURL: BASE_URL,
   timeout: 10000,
 });
 
-// ─── Интерцептор запросов: добавляет /api и токен авторизации ─────────────
+// в”Ђв”Ђв”Ђ РРЅС‚РµСЂС†РµРїС‚РѕСЂ Р·Р°РїСЂРѕСЃРѕРІ: РґРѕР±Р°РІР»СЏРµС‚ /api Рё С‚РѕРєРµРЅ Р°РІС‚РѕСЂРёР·Р°С†РёРё в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 apiClient.interceptors.request.use(
   async (config) => {
-    // Автоматически добавляем /api-префикс если его нет
+    // РђРІС‚РѕРјР°С‚РёС‡РµСЃРєРё РґРѕР±Р°РІР»СЏРµРј /api-РїСЂРµС„РёРєСЃ РµСЃР»Рё РµРіРѕ РЅРµС‚
     if (config.url && !config.url.startsWith('/api')) {
       config.url = `/api${config.url}`;
     }
@@ -57,14 +60,14 @@ apiClient.interceptors.request.use(
         config.headers.Authorization = `Bearer ${token}`;
       }
     } catch (error) {
-      console.log('⚠️ [API] Ошибка чтения токена:', error.message);
+      console.log('вљ пёЏ [API] РћС€РёР±РєР° С‡С‚РµРЅРёСЏ С‚РѕРєРµРЅР°:', error.message);
     }
     return config;
   },
   (error) => Promise.reject(error)
 );
 
-// ─── Интерцептор ответов: обработка 401 ───────────────────────────────────
+// в”Ђв”Ђв”Ђ РРЅС‚РµСЂС†РµРїС‚РѕСЂ РѕС‚РІРµС‚РѕРІ: РѕР±СЂР°Р±РѕС‚РєР° 401 в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
@@ -74,14 +77,14 @@ apiClient.interceptors.response.use(
         await AsyncStorage.removeItem('current_user');
         emitForceLogout();
       } catch (cleanError) {
-        console.log('⚠️ [API] Ошибка при очистке токена:', cleanError.message);
+        console.log('вљ пёЏ [API] РћС€РёР±РєР° РїСЂРё РѕС‡РёСЃС‚РєРµ С‚РѕРєРµРЅР°:', cleanError.message);
       }
     }
     return Promise.reject(error);
   }
 );
 
-// ─── Сервисы ──────────────────────────────────────────────────────────────
+// в”Ђв”Ђв”Ђ РЎРµСЂРІРёСЃС‹ в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 export const adminService = {
   getDashboardStats:  ()         => apiClient.get('/admin/stats'),
   getCourses:         ()         => apiClient.get('/courses'),
@@ -109,7 +112,9 @@ export const profileService = {
   updateName: (username) => apiClient.patch('/profile/name', { username }),
 };
 
-// tokenStorage экспортируем для использования в AuthContext
+// tokenStorage СЌРєСЃРїРѕСЂС‚РёСЂСѓРµРј РґР»СЏ РёСЃРїРѕР»СЊР·РѕРІР°РЅРёСЏ РІ AuthContext
 export { tokenStorage };
 
 export default apiClient;
+
+

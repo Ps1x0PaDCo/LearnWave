@@ -2,7 +2,7 @@
 import { View, Text, StyleSheet, Modal, Animated, TouchableOpacity, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import apiClient, { tokenStorage } from '../services/api';
+import apiClient, { tokenStorage, API_BASE_URL } from '../services/api';
 import { profileService } from '../services/api';
 import { dbService } from '../services/database';
 import { db } from '../services/db';
@@ -248,7 +248,9 @@ export const AuthProvider = ({ children }) => {
       if (error.response?.status === 401 || error.response?.status === 400) {
         serverMessage = 'Неверный email или пароль.';
       } else if (!error.response) {
-        serverMessage = 'Не удалось связаться с сервером.';
+        serverMessage = `Не удалось связаться с сервером. URL: ${API_BASE_URL}. Ошибка: ${error.message || 'без текста'}.`;
+      } else {
+        serverMessage = `Ошибка сервера ${error.response?.status}. URL: ${API_BASE_URL}.`;
       }
       return { success: false, error: serverMessage };
     }
@@ -467,5 +469,7 @@ const popupStyles = StyleSheet.create({
   btn: { width: '100%', height: 55, borderRadius: 18, justifyContent: 'center', alignItems: 'center' },
   btnText: { color: '#FFF', fontWeight: 'bold', fontSize: 16 },
 });
+
+
 
 
